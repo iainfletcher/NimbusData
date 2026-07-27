@@ -24,6 +24,12 @@ export interface Road {
   /** Player-drawn polyline in world metres. */
   points: Vec2[];
   cls: RoadClass;
+  /**
+   * Assigned once, from the character the road ran through at the time, and
+   * never revised. A street called Tanner's Row keeps the name long after the
+   * tannery has gone — which is the town remembering (design/00, Pillar E).
+   */
+  name?: string;
 }
 
 export const ROAD_HALF_WIDTH: Record<RoadClass, number> = {

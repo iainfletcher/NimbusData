@@ -4,6 +4,7 @@ export * from './terrain';
 export * from './buildings';
 export * from './conductance';
 export * from './field';
+export * from './names';
 export * from './roads';
 export * from './fabric';
 export * from './decor';

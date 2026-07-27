@@ -350,6 +350,8 @@ async function main(): Promise<void> {
   const rStreets = el('r-streets');
   const rPeople = el('r-people');
   const rTown = el('r-town');
+  const rStreet = el('r-street');
+  el('r-townname').textContent = world.name;
   let townEvery = 0;
   const rTicks = el('r-ticks');
 
@@ -390,6 +392,9 @@ async function main(): Promise<void> {
       rDominant.style.color = '';
       rCoherence.textContent = '—';
     }
+
+    const road = world.roadNear(w, 14);
+    rStreet.textContent = road?.road.name ?? '—';
 
     const hit = world.buildingAt(w.x, w.y);
     rBuilding.textContent = hit ? buildingType(hit.typeId).name : '—';

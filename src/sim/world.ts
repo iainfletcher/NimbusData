@@ -6,6 +6,8 @@ import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type Roa
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
+import { makeNameRng, streetName, townName } from './names';
+import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -48,8 +50,62 @@ export class World {
    */
   useFlow = true;
 
+  /** This town's name. Fixed by the seed. */
+  readonly name: string;
+
+  private nameRng: () => number;
+  private usedStreetNames = new Set<string>();
+
   constructor(readonly seed: number) {
     this.terrain = new Terrain(seed);
+    this.nameRng = makeNameRng(seed);
+    this.name = townName(this.nameRng);
+  }
+
+  /**
+   * Give any unnamed road a name drawn from the character it runs through.
+   * Named once and left alone thereafter.
+   */
+  private nameRoads(): void {
+    for (const road of this.roads) {
+      if (road.name) continue;
+      road.name = streetName(
+        this.dominantAlong(road),
+        this.usedStreetNames,
+        this.nameRng,
+      );
+    }
+  }
+
+  /** The character a road mostly runs through, weighted by how strongly. */
+  private dominantAlong(road: Road): Character | null {
+    const tally = new Float64Array(CHARACTER_COUNT);
+    let samples = 0;
+
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const a = road.points[i];
+      const b = road.points[i + 1];
+      const steps = Math.max(2, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 12));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const reading = this.field.read(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+        if (!reading.dominant) continue;
+        tally[characterIndex(reading.dominant)] += reading.intensity;
+        samples++;
+      }
+    }
+
+    if (samples === 0) return null;
+
+    let best = -1;
+    let bestValue = 0;
+    for (let c = 0; c < CHARACTER_COUNT; c++) {
+      if (tally[c] > bestValue) {
+        bestValue = tally[c];
+        best = c;
+      }
+    }
+    return best >= 0 ? CHARACTERS[best] : null;
   }
 
   canPlace(typeId: string, pos: Vec2): PlacementResult {
@@ -254,6 +310,8 @@ export class World {
     if (this.fieldDirty) {
       this.field.rebuild(this.buildings, this.useFlow ? this.conductance : openGround());
       this.fieldDirty = false;
+      // Naming needs the field to be current, so it follows the rebuild.
+      this.nameRoads();
     }
 
     for (const b of this.buildings) b.age++;

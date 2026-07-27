@@ -260,8 +260,36 @@ Tanner's Row because there is genuinely a tannery on it — and that makes them 
 legibility feature and not just decoration. When the tannery goes and the quarter
 turns genteel, the name staying put is the town remembering (`00`, Pillar E).
 
-**Cost:** trivial. Half a day, and it's probably the single largest increase in
-charm available per line of code in this whole document.
+**Cost:** trivial.
+
+### ✅ Built — verdict: keep, with one half much stronger than the other
+
+**Street naming: excellent, keep unreservedly.** It is rule-driven from real
+vocabularies rather than sampled, so it cannot produce nonsense, and it is tied
+to the actual dominant character along each road. The seeded test town came out
+with **Cheapside, Cornmarket and Mercer Row** through the trading quarter and
+**Skinnergate** through the working one. The names are *true*, which was the whole
+argument for doing it.
+
+Names are assigned once and never revised, so a street keeps its name after the
+tannery that earned it has gone — Pillar E for free.
+
+**Town naming: good but not flawless.** A 3rd-order character model over ~160 real
+English place names. Sixteen samples:
+
+> Padstock · Rington · Grimsthorne · Greenhoe · Helmscote Magna · Bridgeford ·
+> Thwold · Ivybride · Oakham · Longstead · Thirlme · Holmere · Kings Kettleigh ·
+> Ringham · Skelmdon · Penham
+
+About twelve of sixteen are convincing. The failures are all the same failure:
+the sampler stops mid-element and produces a truncated stub. A first pass was
+much worse (*Thwell*, *Hensing*, *Stogumbe*); requiring the name to end in a
+terminal cluster the corpus actually uses fixed most of it.
+
+The survivors — *Thirlme*, *Ivybride* — pass because their endings genuinely do
+occur (Den**holme**, Kirkbr**ide**), so a 3-character ending check can't catch
+them. Fixable with a proper suffix list rather than a character window, but a
+town name is drawn once per game, so an occasional odd one is cheap. Left as is.
 
 ---
 
