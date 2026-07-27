@@ -6,10 +6,12 @@ import {
   buildingType,
   type Building,
   type Fabric,
+  type Road,
   type StreetVertex,
   type Vec2,
   type World,
 } from '../sim';
+import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
 import { CHARACTER_COLOURS, shade, terrainColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
@@ -20,13 +22,18 @@ const OVERLAY_STEP = 2;
 
 const NEUTRAL_BUILDING = 0x9c8f7d;
 const MUDDLE = 0x6a6a6a;
-const STREET = 0xa89878;
+/** Worn earth: what a desire path looks like. */
+const PATH = 0xa89878;
+/** Made-up surface: what an intentional road looks like. Cooler and harder. */
+const ROAD = 0x8d8578;
+const ROAD_EDGE = 0x736c62;
 
 export class WorldView {
   readonly root = new Container();
 
   private terrain = new Graphics();
   private streets = new Graphics();
+  private roads = new Graphics();
   private overlay = new Graphics();
   private buildings = new Graphics();
   private ghost = new Graphics();
@@ -48,7 +55,16 @@ export class WorldView {
     private mode: ViewMode = 'iso',
   ) {
     this.projection = projectionFor(mode);
-    this.root.addChild(this.terrain, this.streets, this.overlay, this.buildings, this.ghost);
+    // Worn paths first, then made roads over them: a road is the more definite
+    // thing and should visibly cut across the tracks that predate it.
+    this.root.addChild(
+      this.terrain,
+      this.streets,
+      this.roads,
+      this.overlay,
+      this.buildings,
+      this.ghost,
+    );
   }
 
   get viewMode(): ViewMode {
@@ -116,6 +132,7 @@ export class WorldView {
 
     if (this.streetsDirty) {
       this.drawFabric();
+      this.drawRoads();
       this.streetsDirty = false;
     }
     if (this.overlayDirty) {
@@ -129,6 +146,7 @@ export class WorldView {
 
     this.overlay.visible = this.showOverlay;
     this.streets.visible = this.showStreets;
+    this.roads.visible = this.showStreets;
 
     // Camera is a transform on the container, not a redraw.
     const { zoom, x, y, viewportWidth, viewportHeight } = this.camera;
@@ -199,8 +217,75 @@ export class WorldView {
         points.push(s.x, s.y);
       }
 
-      g.poly(points).fill(STREET);
+      g.poly(points).fill(PATH);
     }
+  }
+
+  /**
+   * Roads are drawn as a made surface with a kerb — deliberately crisper and
+   * cooler than the worn earth of a desire path, so intention reads differently
+   * from accident at a glance.
+   */
+  private drawRoads(): void {
+    const g = this.roads;
+    g.clear();
+
+    for (const road of this.world.roads) {
+      const halfWidth = ROAD_HALF_WIDTH[road.cls];
+      const centre: Vec2[] = [];
+      walkRoad(road, 6, (p) => centre.push(p));
+      if (centre.length < 2) continue;
+
+      const verts: StreetVertex[] = centre.map((p) => ({ ...p, halfWidth }));
+      this.fillRibbon(g, verts, ROAD_EDGE, 1.5);
+      this.fillRibbon(g, verts, ROAD, 0);
+    }
+  }
+
+  private fillRibbon(
+    g: Graphics,
+    verts: StreetVertex[],
+    colour: number,
+    inflate: number,
+  ): void {
+    const widened = inflate
+      ? verts.map((v) => ({ ...v, halfWidth: v.halfWidth + inflate }))
+      : verts;
+    const { left, right } = offsetPath(widened);
+    const points: number[] = [];
+
+    for (const p of left) {
+      const s = this.projectOnGround(p);
+      points.push(s.x, s.y);
+    }
+    for (let i = right.length - 1; i >= 0; i--) {
+      const s = this.projectOnGround(right[i]);
+      points.push(s.x, s.y);
+    }
+
+    g.poly(points).fill(colour);
+  }
+
+  /** Preview of a road being drawn. Pass null to clear. */
+  setRoadPreview(points: Vec2[] | null, cls: keyof typeof ROAD_HALF_WIDTH): void {
+    const g = this.ghost;
+    if (!points || points.length < 2) return;
+
+    const road: Road = { id: -1, points, cls };
+    const centre: Vec2[] = [];
+    walkRoad(road, 6, (p) => centre.push(p));
+    if (centre.length < 2) return;
+
+    this.fillRibbon(
+      g,
+      centre.map((p) => ({ ...p, halfWidth: ROAD_HALF_WIDTH[cls] })),
+      0xe0d3a8,
+      0,
+    );
+  }
+
+  clearGhost(): void {
+    this.ghost.clear();
   }
 
   private drawOverlay(): void {
@@ -335,14 +420,19 @@ export class WorldView {
   }
 
   /** Placement preview. Pass null to clear. */
-  setGhost(typeId: string | null, pos: Point | null, valid: boolean): void {
+  setGhost(
+    typeId: string | null,
+    pos: Point | null,
+    valid: boolean,
+    rotation = 0,
+  ): void {
     const g = this.ghost;
     g.clear();
     if (!typeId || !pos) return;
 
     this.drawBuilding(
       g,
-      { id: -1, typeId, pos, rotation: 0, age: 0 },
+      { id: -1, typeId, pos, rotation, age: 0 },
       0.55,
       valid ? 0x9ad6a0 : 0xd68a8a,
     );

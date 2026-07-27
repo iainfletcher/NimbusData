@@ -169,17 +169,86 @@ different treatment.**
   rather than streets.
 
 That is arguably correct behaviour rather than a bug — loose placement *should*
-give a rambling settlement. But it makes an open question sharp: **should buildings
-settle onto frontages over time?** A small nudge toward the nearest street, applied
-as part of evolution, would let a loosely placed cluster tidy itself into a street
-over a few years. It's very much in the spirit of "you author it, it evolves" —
-but it edges against the rule in `00` that evolution must never override the plan.
-A few metres of settling is probably elaboration; anything more is relocation.
+give a rambling settlement. It raised the question of whether buildings ought to
+**settle onto frontages over time**, nudged by evolution. That question is now
+answered, and the answer is no. See §7.
 
-Not decided. It's the most interesting open question the prototype has produced.
+## 7. Roads and paths — two kinds of route
+
+The resolution, and it turned out to be the missing half of the whole system.
+
+> **Roads are intentional. Paths are desire. They are different things, they look
+> different, and they behave differently.**
+
+**Roads** are drawn by the player. They are the armature: permanent, formal, a
+made surface with a kerb. The town never draws one and never removes one.
+
+**Paths** are worn by the town. Thin, wandering, informal, generated from journeys
+exactly as before. They are what people tread into the gaps.
+
+### How they interact
+
+A road is a **cheap corridor** in the routing cost field. Once one exists,
+journeys use it for the trunk of the trip, so the desire paths still needed are
+**short spurs from a frontage to the nearest road** — plus the back lanes and
+yards worn behind the frontages.
+
+This makes the planned/organic dial **continuous and physical rather than a mode
+switch**:
+
+- Draw no roads → a rambling settlement threaded with tracks.
+- Draw plenty → a formal town with lanes behind.
+- Draw some → what a real British town actually is.
+
+The dial from §4 is no longer a setting. It's a consequence of how much road you
+chose to lay, and you can change your mind at any point.
+
+### Frontage: how strictly a building lines up says what kind of place it is
+
+- **Near a player-drawn road** — the frontage aligns *exactly*, at a consistent
+  setback from the kerb. Placement snaps to it. This is what makes a terrace read
+  as deliberate.
+- **Near only a worn path** — the building faces it *loosely*, with a few degrees
+  of deterministic wonk, so an unplanned lane doesn't look surveyed.
+- **Near neither** — left as placed.
+
+Most of the difference between a planned crescent and a rambling hamlet is this
+one rule.
+
+### Why this settles the authorship question
+
+Buildings never need nudging, because **the player supplies the armature
+deliberately**. Want a street? Lay a road and build along it — the snapping does
+the rest, immediately and predictably. Want a hamlet? Don't, and let the paths
+wander.
+
+So evolution still never moves anything the player placed, and the rule in `00`
+holds intact. Authorship is preserved *and* the organic fabric works, because the
+intention arrives as a road rather than as a correction.
+
+### Built and working
+
+Implemented in `src/sim/roads.ts` and `src/sim/fabric.ts`. In plan view the two
+kinds are immediately distinguishable: straight grey made roads carrying the
+frontages, pale wandering tracks worn behind them into back lanes and yards.
+
+### The obvious next move: paving a desire path
+
+The game already knows where people actually walk. Letting the player **pave a
+worn path into a road** would close the loop beautifully — *the town shows you
+where it wants a road, and you decide whether to build it*. That is the
+intentional/organic tension in a single interaction, and it is exactly the
+"legible and alive" thesis: you can see the desire, and you choose whether to
+formalise it.
+
+## 8. Risks
 
 ## 7. Risks
 
+0. ~~Procedural organic fabric may not look convincing.~~ **Largely retired.**
+   Desire-line routing over a terrain cost field, with roads as an armature,
+   produces a network that reads as a place. The residual risk is aesthetic
+   detail (infill, walls, yards), not the approach.
 1. **Does planning become the min-maxer's obvious choice?** If so, the relaxed way
    to play becomes the losing way, which would be bad. Mitigation: planned fabric
    must cost real money and time, and vibrancy must be genuinely valuable. Needs

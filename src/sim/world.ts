@@ -2,6 +2,7 @@ import { CharacterField, COHERENCE_THRESHOLD } from './field';
 import { Terrain } from './terrain';
 import { buildingType } from './buildings';
 import { emptyFabric, generateFabric, orientToFabric, type Fabric } from './fabric';
+import { nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -23,8 +24,10 @@ export class World {
   readonly terrain: Terrain;
   readonly field = new CharacterField();
   readonly buildings: Building[] = [];
+  readonly roads: Road[] = [];
 
   private nextId = 1;
+  private nextRoadId = 1;
   private fieldDirty = true;
   private tickCount = 0;
 
@@ -112,6 +115,36 @@ export class World {
     return null;
   }
 
+  /**
+   * Lay an intentional road. Unlike desire paths, roads are authored and permanent
+   * — the town never draws one for you and never removes one (design/05 §7).
+   */
+  addRoad(points: Vec2[], cls: RoadClass = 'street'): Road | null {
+    if (points.length < 2) return null;
+
+    const road: Road = {
+      id: this.nextRoadId++,
+      points: points.map((p) => ({ x: p.x, y: p.y })),
+      cls,
+    };
+    this.roads.push(road);
+    this.markFabricDirty();
+    return road;
+  }
+
+  removeRoad(id: number): boolean {
+    const i = this.roads.findIndex((r) => r.id === id);
+    if (i < 0) return false;
+    this.roads.splice(i, 1);
+    this.markFabricDirty();
+    return true;
+  }
+
+  /** Nearest road to a point, for frontage snapping. */
+  roadNear(pos: Vec2, maxDistance: number): RoadHit | null {
+    return nearestRoad(this.roads, pos, maxDistance);
+  }
+
   /** The street network. Regenerated shortly after buildings change. */
   get fabric(): Fabric {
     return this._fabric;
@@ -124,8 +157,8 @@ export class World {
 
   /** Force an immediate rebuild rather than waiting out the debounce. */
   rebuildFabric(): void {
-    this._fabric = generateFabric(this.terrain, this.buildings, this.seed);
-    orientToFabric(this.buildings, this._fabric);
+    this._fabric = generateFabric(this.terrain, this.buildings, this.roads, this.seed);
+    orientToFabric(this.buildings, this._fabric, this.roads);
     this.fabricDirty = false;
     this.fabricCooldown = 0;
     this._fabricVersion++;

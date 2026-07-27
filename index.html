@@ -168,6 +168,11 @@
         <button id="toggle-pause" aria-pressed="false">Pause</button>
       </div>
       <div class="row">
+        <button id="road-lane">Lane</button>
+        <button id="road-street">Street</button>
+        <button id="road-high">High St</button>
+      </div>
+      <div class="row">
         <button id="seed-town">Seed test town</button>
         <button id="clear-town">Clear</button>
       </div>
@@ -176,7 +181,7 @@
         <div class="line"><span class="k">Coherence</span><span id="r-coherence">—</span></div>
         <div class="line"><span class="k">Building</span><span id="r-building">—</span></div>
         <div class="line"><span class="k">Buildings</span><span id="r-count">0</span></div>
-        <div class="line"><span class="k">Streets</span><span id="r-streets">0</span></div>
+        <div class="line"><span class="k">Roads / paths</span><span id="r-streets">0 / 0</span></div>
         <div class="line"><span class="k">Ticks</span><span id="r-ticks">0</span></div>
       </div>
     </div>
@@ -185,6 +190,8 @@
       <kbd>Left click</kbd> place · <kbd>Right drag</kbd> pan · <kbd>Wheel</kbd> zoom ·
       <kbd>Shift</kbd>+click remove · <kbd>Esc</kbd> deselect · <kbd>C</kbd> character ·
       <kbd>S</kbd> streets · <kbd>V</kbd> view · <kbd>Space</kbd> pause
+      <br />Pick a road class, click to lay points, <kbd>Enter</kbd> or right-click to
+      finish. Buildings snap to a road frontage when placed near one.
     </div>
 
     <script type="module" src="/src/app/main.ts"></script>

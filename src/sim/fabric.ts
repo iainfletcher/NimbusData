@@ -1,5 +1,6 @@
 import { buildingType } from './buildings';
 import { valueNoise } from './rng';
+import { ROAD_COST, ROAD_HALF_WIDTH, nearestRoad, walkRoad, type Road } from './roads';
 import { Terrain } from './terrain';
 import { CELL_SIZE, WORLD_CELLS, WORLD_SIZE, type Building, type Vec2 } from './types';
 
@@ -68,11 +69,12 @@ const FRONTAGE_DISCOUNT = 0.5;
 export function generateFabric(
   terrain: Terrain,
   buildings: readonly Building[],
+  roads: readonly Road[],
   seed: number,
 ): Fabric {
   if (buildings.length < 2) return emptyFabric();
 
-  const cost = buildCostField(terrain, buildings, seed);
+  const cost = buildCostField(terrain, buildings, roads, seed);
   const nodes = buildings.map((b) => nearestOpenCell(cost, b.pos));
 
   const traffic = new Float32Array(ROUTE_CELLS * ROUTE_CELLS);
@@ -110,6 +112,7 @@ export function generateFabric(
 function buildCostField(
   terrain: Terrain,
   buildings: readonly Building[],
+  roads: readonly Road[],
   seed: number,
 ): Float32Array {
   const cost = new Float32Array(ROUTE_CELLS * ROUTE_CELLS);
@@ -183,6 +186,28 @@ function buildCostField(
         cost[cy * ROUTE_CELLS + cx] = IMPASSABLE;
       }
     }
+  }
+
+  // Roads go on last and override: they are the armature the town hangs off, so
+  // a journey should always prefer one. This is what turns desire paths into
+  // short spurs from a frontage to the nearest road rather than long cross-country
+  // tracks.
+  for (const road of roads) {
+    const halfWidth = ROAD_HALF_WIDTH[road.cls];
+    const reach = Math.ceil(halfWidth / ROUTE_CELL);
+
+    walkRoad(road, ROUTE_CELL / 2, (p) => {
+      const cx0 = Math.floor(p.x / ROUTE_CELL);
+      const cy0 = Math.floor(p.y / ROUTE_CELL);
+      for (let dy = -reach; dy <= reach; dy++) {
+        for (let dx = -reach; dx <= reach; dx++) {
+          const cx = cx0 + dx;
+          const cy = cy0 + dy;
+          if (cx < 0 || cy < 0 || cx >= ROUTE_CELLS || cy >= ROUTE_CELLS) continue;
+          cost[cy * ROUTE_CELLS + cx] = ROAD_COST;
+        }
+      }
+    });
   }
 
   return cost;
@@ -451,14 +476,32 @@ function smoothPath(points: Vec2[], widths: number[], iterations = 2): StreetVer
 // ---------------------------------------------------------------------------
 
 /**
- * Buildings turn to face the street they stand on. This is most of what makes a
- * cluster read as a street rather than as scattered boxes.
+ * Buildings turn to face what they stand on — and *how strictly* depends on what
+ * that is (design/05 §7).
+ *
+ * A player-drawn road is an intention, so frontages line up on it exactly, which
+ * is what makes a terrace read as deliberate. A worn desire path is not, so
+ * buildings near one sit at a looser, slightly wonky angle. The difference
+ * between a planned crescent and a rambling hamlet is mostly this.
  */
-export function orientToFabric(buildings: readonly Building[], fabric: Fabric): boolean {
-  if (fabric.paths.length === 0) return false;
+export function orientToFabric(
+  buildings: readonly Building[],
+  fabric: Fabric,
+  roads: readonly Road[] = [],
+): boolean {
   let changed = false;
 
   for (const b of buildings) {
+    // A road within reach wins outright, however close a path happens to be.
+    const road = nearestRoadAngle(roads, b.pos, ROAD_FRONTAGE_RANGE);
+    if (road !== null) {
+      if (Math.abs(normaliseAngle(road - b.rotation)) > 1e-3) {
+        b.rotation = road;
+        changed = true;
+      }
+      continue;
+    }
+
     let bestD2 = Infinity;
     let bestAngle = b.rotation;
 
@@ -477,14 +520,40 @@ export function orientToFabric(buildings: readonly Building[], fabric: Fabric): 
       }
     }
 
-    // Beyond about 30m there is no street to face, so leave it be.
-    if (bestD2 < 30 * 30 && Math.abs(bestAngle - b.rotation) > 1e-3) {
-      b.rotation = bestAngle;
+    if (bestD2 >= PATH_FRONTAGE_RANGE * PATH_FRONTAGE_RANGE) continue;
+
+    // Deterministic wonk, so an unplanned lane doesn't look surveyed.
+    const jitter = (valueNoise(b.id * 0.71, b.id * 0.37, 0x51de) - 0.5) * PATH_WONK;
+    const angle = bestAngle + jitter;
+
+    if (Math.abs(normaliseAngle(angle - b.rotation)) > 1e-3) {
+      b.rotation = angle;
       changed = true;
     }
   }
 
   return changed;
+}
+
+/** How far a road reaches to claim a frontage, and how far a mere path does. */
+const ROAD_FRONTAGE_RANGE = 28;
+const PATH_FRONTAGE_RANGE = 30;
+/** Radians of deliberate untidiness for buildings that only face a worn path. */
+const PATH_WONK = 0.34;
+
+function nearestRoadAngle(
+  roads: readonly Road[],
+  pos: Vec2,
+  maxDistance: number,
+): number | null {
+  const hit = nearestRoad(roads, pos, maxDistance);
+  return hit ? hit.angle : null;
+}
+
+function normaliseAngle(a: number): number {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
 }
 
 function closestPointOnSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 {

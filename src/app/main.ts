@@ -6,6 +6,8 @@ import {
   buildingType,
   placeableTypes,
   type BuildingFamily,
+  type RoadClass,
+  type Vec2,
 } from '../sim';
 import { Camera } from '../render/camera';
 import { CHARACTER_COLOURS, CHARACTER_LABELS } from '../render/palette';
@@ -14,6 +16,14 @@ import type { ViewMode } from '../render/projection';
 import { seedTestTown } from './testTown';
 
 const SIM_TICK_MS = 100;
+
+/**
+ * How near a road a building has to be before it snaps to its frontage, and how
+ * far back from the kerb it then sits (design/05 §7). Placing near a road is a
+ * deliberate act, so the alignment is exact; placing away from one is not.
+ */
+const FRONTAGE_SNAP = 26;
+const SETBACK = 1.6;
 const FAMILY_ORDER: BuildingFamily[] = ['economic', 'civic', 'residential'];
 const FAMILY_LABELS: Record<BuildingFamily, string> = {
   economic: 'Economic',
@@ -49,8 +59,35 @@ async function main(): Promise<void> {
   camera.zoom = 2.4;
 
   let selectedType: string | null = null;
+  let roadClass: RoadClass | null = null;
+  let roadPoints: Vec2[] = [];
   let paused = false;
   let cursor: { x: number; y: number } | null = null;
+
+  /**
+   * Where a building would actually go, given the road it is being placed
+   * against. This is the intentional half of the fabric: near a road you are
+   * building a frontage, not dropping a box in a field.
+   */
+  function resolvePlacement(
+    typeId: string,
+    at: Vec2,
+  ): { pos: Vec2; rotation: number } {
+    const hit = world.roadNear(at, FRONTAGE_SNAP);
+    if (!hit) return { pos: at, rotation: 0 };
+
+    const type = buildingType(typeId);
+    // Which side of the road the cursor is on decides which side we build.
+    const nx = -Math.sin(hit.angle);
+    const ny = Math.cos(hit.angle);
+    const side = Math.sign((at.x - hit.point.x) * nx + (at.y - hit.point.y) * ny) || 1;
+    const out = hit.halfWidth + SETBACK + type.depth / 2;
+
+    return {
+      pos: { x: hit.point.x + nx * side * out, y: hit.point.y + ny * side * out },
+      rotation: hit.angle,
+    };
+  }
 
   // ---- Palette -----------------------------------------------------------
   const paletteHost = document.getElementById('palette-items')!;
@@ -88,6 +125,7 @@ async function main(): Promise<void> {
   }
 
   function selectType(id: string | null): void {
+    if (id) setRoadClass(null);
     selectedType = selectedType === id ? null : id;
     for (const [typeId, btn] of itemButtons) {
       btn.setAttribute('aria-pressed', String(typeId === selectedType));
@@ -129,6 +167,39 @@ async function main(): Promise<void> {
     btnStreets.setAttribute('aria-pressed', String(on));
   }
 
+  const roadButtons: Record<RoadClass, HTMLButtonElement> = {
+    lane: el<HTMLButtonElement>('road-lane'),
+    street: el<HTMLButtonElement>('road-street'),
+    high: el<HTMLButtonElement>('road-high'),
+  };
+
+  function setRoadClass(cls: RoadClass | null): void {
+    roadClass = cls;
+    roadPoints = [];
+    view.clearGhost();
+    for (const [k, btn] of Object.entries(roadButtons)) {
+      btn.setAttribute('aria-pressed', String(k === cls));
+    }
+    if (cls) selectType(null);
+  }
+
+  for (const [cls, btn] of Object.entries(roadButtons)) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', () =>
+      setRoadClass(roadClass === cls ? null : (cls as RoadClass)),
+    );
+  }
+
+  function finishRoad(): void {
+    if (roadClass && roadPoints.length >= 2) {
+      world.addRoad(roadPoints, roadClass);
+      world.rebuildFabric();
+      view.markBuildingsDirty();
+    }
+    roadPoints = [];
+    view.clearGhost();
+  }
+
   btnOverlay.addEventListener('click', () => setOverlay(!view.showOverlay));
   btnStreets.addEventListener('click', () => setStreets(!view.showStreets));
   btnPause.addEventListener('click', () => setPaused(!paused));
@@ -152,6 +223,14 @@ async function main(): Promise<void> {
   let lastPan = { x: 0, y: 0 };
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) {
+      // Right-click finishes a road rather than panning, when one is in progress.
+      if (roadClass && roadPoints.length > 0) {
+        finishRoad();
+        return;
+      }
+    }
+
     if (e.button === 2 || e.button === 1) {
       panning = true;
       lastPan = { x: e.clientX, y: e.clientY };
@@ -162,13 +241,20 @@ async function main(): Promise<void> {
     if (e.button !== 0) return;
     const w = camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection);
 
+    if (roadClass) {
+      roadPoints.push(w);
+      return;
+    }
+
     if (e.shiftKey) {
       const hit = world.buildingAt(w.x, w.y);
       if (hit && world.remove(hit.id)) view.markBuildingsDirty();
       return;
     }
 
-    if (selectedType && world.place(selectedType, w).ok) {
+    if (!selectedType) return;
+    const resolved = resolvePlacement(selectedType, w);
+    if (world.place(selectedType, resolved.pos, resolved.rotation).ok) {
       view.markBuildingsDirty();
     }
   });
@@ -203,7 +289,10 @@ async function main(): Promise<void> {
   );
 
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') selectType(null);
+    if (e.key === 'Escape') {
+      if (roadClass) setRoadClass(null);
+      else selectType(null);
+    } else if (e.key === 'Enter') finishRoad();
     else if (e.key === 'c' || e.key === 'C') setOverlay(!view.showOverlay);
     else if (e.key === 's' || e.key === 'S') setStreets(!view.showStreets);
     else if (e.key === 'v' || e.key === 'V') setView(view.viewMode === 'iso' ? 'plan' : 'iso');
@@ -225,7 +314,7 @@ async function main(): Promise<void> {
 
   function updateReadout(): void {
     rCount.textContent = String(world.buildings.length);
-    rStreets.textContent = String(world.fabric.paths.length);
+    rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;
     rTicks.textContent = String(world.ticks);
 
     if (!cursor) {
@@ -272,9 +361,19 @@ async function main(): Promise<void> {
       }
     }
 
-    if (cursor && selectedType) {
+    if (cursor && roadClass) {
       const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
-      view.setGhost(selectedType, w, world.canPlace(selectedType, w).ok);
+      view.clearGhost();
+      view.setRoadPreview(roadPoints.length ? [...roadPoints, w] : null, roadClass);
+    } else if (cursor && selectedType) {
+      const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
+      const resolved = resolvePlacement(selectedType, w);
+      view.setGhost(
+        selectedType,
+        resolved.pos,
+        world.canPlace(selectedType, resolved.pos).ok,
+        resolved.rotation,
+      );
     }
 
     view.render();
