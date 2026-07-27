@@ -11,6 +11,7 @@ machinery.
 | `03-buildings-networks-and-eras.md` | **Game B** — the resolution line, building families, transport, utilities, era progression. (§2 superseded by `04`.) |
 | `04-character-and-districts.md` | **Game B** — district character as a plural palette, coherence over quality, and how it drives evolution and territory. |
 | `05-fabric-and-planning.md` | **Game B** — organic vs planned fabric, orthogonal to character; vibrancy vs amplification, and the player-set input dial. |
+| `06-mvp-plan.md` | **Blocking decisions, MVP scope, milestones.** Start here when moving to code. |
 
 ## The shared thesis
 
