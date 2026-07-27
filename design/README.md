@@ -12,6 +12,7 @@ machinery.
 | `04-character-and-districts.md` | **Game B** — district character as a plural palette, coherence over quality, and how it drives evolution and territory. |
 | `05-fabric-and-planning.md` | **Game B** — organic vs planned fabric, orthogonal to character; vibrancy vs amplification, and the player-set input dial. |
 | `06-mvp-plan.md` | **Blocking decisions, MVP scope, milestones.** Start here when moving to code. |
+| `07-algorithms.md` | Techniques worth stealing — procedural architecture, fields, hydrology, trees, naming. |
 
 ## The shared thesis
 
