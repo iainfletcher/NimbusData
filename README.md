@@ -47,6 +47,7 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Place, remove, pan, zoom, pause, and overlays for character and streets
 
 - Ambient people walking the network, depth-sorted against buildings
+- Cast shadows, contact occlusion and sun-lit terrain relief
 - Paving a worn path into a road, keeping its wander
 - Market stalls, open-field strips, livestock
 

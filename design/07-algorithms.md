@@ -343,6 +343,68 @@ town name is drawn once per game, so an occasional odd one is cheap. Left as is.
 
 ## Two cheap wins worth noting
 
+### ✅ Built — shading, shadows and a performance pass
+
+**Sun and cast shadows.** One sun, low in the north-west, used consistently for
+terrain relief, wall shading and cast shadows. A building's shadow is the convex
+hull of its footprint swept along the light; trees get an offset blob; everything
+gets a tight contact smudge where it meets the ground. Shadows are drawn flat in
+a single layer under all upright geometry, so they need no depth sorting — they
+simply darken whatever they fall across. Terrain relief switched from a fixed
+cheap gradient to Lambert shading against the same sun, which is most of what
+makes the landform read as landform.
+
+### On measuring performance here — read this before trusting a number
+
+This container renders with **SwiftShader**: software rasterisation, no GPU. Frame
+rate here measures the absence of a graphics card, not the code. Every fps figure
+below is therefore meaningless for real hardware and is recorded only to stop
+anyone chasing it.
+
+What *is* meaningful is **CPU time per frame**, which is ours, and generation
+time. Both are now in the readout.
+
+| | Before | After |
+|---|---|---|
+| Render CPU per frame | 7.58 ms | **~2.5 ms** |
+| World generation | ~4.0 s | **~2.35 s** |
+| Frame rate (software raster) | 2–4 | 2–4 — unchanged, and expected |
+
+Roughly 98% of a frame here is software rasterisation. On a GPU this scene is
+not remotely demanding.
+
+**Where the CPU went, and one thing I should have caught sooner:**
+
+- **Sculpting re-derived the entire hydrology on every pointer move** — a full
+  flood-fill plus accumulation over 65k cells, per mouse event, while dragging.
+  The heightmap now updates immediately so the ground responds under the cursor,
+  and the water settles a beat after the stroke.
+- **Accumulation was sorting 65k cells with a comparator on every terrain edit.**
+  Priority-flood already pops in ascending filled height, so recording that order
+  and walking it backwards gives the topological sort for nothing.
+- **Erosion allocated an object per sample** — some 2.5 million allocations per
+  generate. Scratch variables instead.
+- **The sea was thousands of individual quads.** Standing water is a flat sheet,
+  so each row is emitted as one run rather than eighty cells.
+- **All 64 people bands were cleared every frame**, each clear forcing a geometry
+  rebuild, even with nobody in them. Only bands that had someone last frame are
+  touched now; empty static bands are hidden outright.
+
+**The honest part:** at the previous commit this was already running at 4fps and
+7.6ms of render CPU. None of it was caused by the terrain work — I had simply
+never measured, through many turns of adding geometry. Two of the five problems
+above (the per-move hydrology, the comparator sort) were mine from the turn
+before; the other three had been there for ages.
+
+**One tuning trap worth recording.** A channel has to be drawn wide enough to stay
+continuous across the grid diagonal, or a stream renders as a string of beads. But
+that gives every watercourse a floor on its apparent width, which turns the stream
+threshold into a *visual* decision as much as a hydrological one: set it low and
+every trickle looks like a river and the map turns to lace. Raised until only
+courses worth showing appear.
+
+---
+
 **8. Poisson-disk sampling** (Bridson, 2007) for scatter. My woodland uses a
 jittered grid, which leaves faint rows visible at distance. Bridson's algorithm is
 O(n), about thirty lines, and gives natural spacing with no structure. Small,

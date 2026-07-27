@@ -420,11 +420,13 @@ async function main(): Promise<void> {
   const rStreets = el('r-streets');
   const rPeople = el('r-people');
   const rTown = el('r-town');
+  const rRender = el('r-render');
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
   el('r-townname').textContent = world.name;
-  let townEvery = 0;
+  let townEvery = -Infinity;
+  let renderMs = 0;
   const rTicks = el('r-ticks');
 
   function updateReadout(): void {
@@ -433,8 +435,12 @@ async function main(): Promise<void> {
     rPeople.textContent = String(world.crowd.people.length);
 
     // Scanning every cell is too slow for every frame, and it barely changes.
-    if (townEvery++ % 45 === 0) {
+    // Timed rather than frame-counted, so a slow machine still updates it.
+    const now = performance.now();
+    if (now - townEvery > 1500) {
+      townEvery = now;
       const stats = world.field.townCoherence();
+      rRender.textContent = `${renderMs.toFixed(2)} ms`;
       rTown.textContent = stats.cells
         ? `${Math.round(stats.mean * 100)}% over ${stats.cells}`
         : '—';
@@ -517,7 +523,13 @@ async function main(): Promise<void> {
     const dt = ticker.deltaMS / 1000;
     if (!paused) world.updatePeople(dt);
 
+    // CPU cost of a frame, which is the part that is ours to fix. Deliberately
+    // separate from frame rate: this machine renders in software, so fps here
+    // measures the absence of a GPU rather than anything about the code.
+    const t0 = performance.now();
     view.render(paused ? 0 : dt);
+    renderMs += (performance.now() - t0 - renderMs) * 0.08;
+
     updateReadout();
   });
 }

@@ -74,8 +74,13 @@ export function erode(
     return yi * width + xi;
   };
 
-  /** Height and gradient by bilinear interpolation. */
-  const sample = (x: number, y: number) => {
+  // Reused rather than allocated: sample() runs millions of times per generate.
+  let sHeight = 0;
+  let sGx = 0;
+  let sGy = 0;
+
+  /** Height and gradient by bilinear interpolation, into the scratch above. */
+  const sample = (x: number, y: number): void => {
     const xi = Math.min(width - 2, Math.max(0, Math.floor(x)));
     const yi = Math.min(height - 2, Math.max(0, Math.floor(y)));
     const fx = x - xi;
@@ -87,12 +92,10 @@ export function erode(
     const h01 = heights[i + width];
     const h11 = heights[i + width + 1];
 
-    return {
-      height:
-        h00 * (1 - fx) * (1 - fy) + h10 * fx * (1 - fy) + h01 * (1 - fx) * fy + h11 * fx * fy,
-      gx: (h10 - h00) * (1 - fy) + (h11 - h01) * fy,
-      gy: (h01 - h00) * (1 - fx) + (h11 - h10) * fx,
-    };
+    sHeight =
+      h00 * (1 - fx) * (1 - fy) + h10 * fx * (1 - fy) + h01 * (1 - fx) * fy + h11 * fx * fy;
+    sGx = (h10 - h00) * (1 - fy) + (h11 - h01) * fy;
+    sGy = (h01 - h00) * (1 - fx) + (h11 - h10) * fx;
   };
 
   const change = (x: number, y: number, amount: number) => {
@@ -114,10 +117,11 @@ export function erode(
     let sediment = 0;
 
     for (let step = 0; step < params.lifetime; step++) {
-      const here = sample(x, y);
+      sample(x, y);
+      const hereHeight = sHeight;
 
-      dirX = dirX * params.inertia - here.gx * (1 - params.inertia);
-      dirY = dirY * params.inertia - here.gy * (1 - params.inertia);
+      dirX = dirX * params.inertia - sGx * (1 - params.inertia);
+      dirY = dirY * params.inertia - sGy * (1 - params.inertia);
 
       const len = Math.hypot(dirX, dirY);
       if (len < 1e-6) break;
@@ -128,7 +132,8 @@ export function erode(
       const ny = y + dirY;
       if (nx < 1 || ny < 1 || nx >= width - 2 || ny >= height - 2) break;
 
-      const drop = sample(nx, ny).height - here.height;
+      sample(nx, ny);
+      const drop = sHeight - hereHeight;
 
       // Uphill, or carrying more than it can: put sediment down.
       const carry = Math.max(-drop * speed * water * params.capacity, 0.008);

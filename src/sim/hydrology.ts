@@ -26,8 +26,15 @@ import { MinHeap } from './heap';
  */
 
 /** Cells of upstream catchment before ground counts as a watercourse. */
-export const STREAM_THRESHOLD = 260;
-export const RIVER_THRESHOLD = 2200;
+/**
+ * A channel has to be drawn wide enough to be continuous across the grid
+ * diagonal, so every watercourse has a floor on its apparent width. That makes
+ * the threshold a *visual* decision as much as a hydrological one: set it low
+ * and every trickle reads as a river and the map turns into lace. These pick
+ * out the courses worth showing.
+ */
+export const STREAM_THRESHOLD = 620;
+export const RIVER_THRESHOLD = 3400;
 
 /**
  * Lakes shallower than this are just damp ground. Erosion leaves a scattering of
@@ -78,6 +85,12 @@ export function computeHydrology(
   // ---- 1. Priority-flood --------------------------------------------------
   const closed = new Uint8Array(n);
   const heap = new MinHeap();
+  // Priority-flood pops cells in ascending filled height. Recording that order
+  // gives accumulation its topological sort for free — reversed, it is exactly
+  // "highest first" — which saves sorting 65k cells with a comparator on every
+  // single terrain edit.
+  const popOrder = new Int32Array(n);
+  let popped = 0;
 
   const push = (i: number, h: number) => {
     if (closed[i]) return;
@@ -98,6 +111,7 @@ export function computeHydrology(
 
   while (heap.size > 0) {
     const i = heap.pop();
+    popOrder[popped++] = i;
     const cx = i % width;
     const cy = (i / width) | 0;
 
@@ -142,11 +156,10 @@ export function computeHydrology(
 
   // ---- 3. Accumulation ----------------------------------------------------
   // Highest first, so a cell is always resolved before whatever it drains into.
-  const order = new Int32Array(n);
-  for (let i = 0; i < n; i++) order[i] = i;
-  const sorted = Array.from(order).sort((a, b) => filled[b] - filled[a]);
-
-  for (const i of sorted) {
+  // Every cell drains to a strictly lower filled neighbour (the epsilon
+  // guarantees it), so reverse pop order is a valid topological order.
+  for (let k = popped - 1; k >= 0; k--) {
+    const i = popOrder[k];
     const to = downstream[i];
     if (to >= 0) accumulation[to] += accumulation[i];
   }
@@ -182,7 +195,7 @@ export function isWet(hydro: Hydrology, i: number): boolean {
 export function channelWidth(accumulation: number): number {
   if (accumulation < STREAM_THRESHOLD) return 0;
   if (accumulation >= RIVER_THRESHOLD) {
-    return Math.min(26, 9 + Math.sqrt(accumulation - RIVER_THRESHOLD) * 0.35);
+    return Math.min(30, 11 + Math.sqrt(accumulation - RIVER_THRESHOLD) * 0.3);
   }
-  return 2.5 + (accumulation - STREAM_THRESHOLD) / (RIVER_THRESHOLD - STREAM_THRESHOLD) * 6.5;
+  return 6 + ((accumulation - STREAM_THRESHOLD) / (RIVER_THRESHOLD - STREAM_THRESHOLD)) * 5;
 }

@@ -20,6 +20,9 @@ const SETTLING_TICKS = 40;
  */
 const FABRIC_DEBOUNCE_TICKS = 4;
 
+/** Ticks of quiet after a brush stroke before the water is recomputed. */
+const WATER_SETTLE_TICKS = 3;
+
 export interface PlacementResult {
   ok: boolean;
   reason?: string;
@@ -40,6 +43,7 @@ export class World {
   private _fabric: Fabric = emptyFabric();
   private fabricDirty = false;
   private fabricCooldown = 0;
+  private waterCooldown = 0;
   private _fabricVersion = 0;
   private _decor: Decor = emptyDecor();
   readonly crowd = new Crowd();
@@ -323,6 +327,16 @@ export class World {
       if (this.fabricCooldown > 0) this.fabricCooldown--;
       else this.rebuildFabric();
     }
+
+    // Water settles a beat after the last brush stroke, then everything that
+    // stands on the ground is rebuilt against the new shape.
+    if (this.terrain.waterPending) {
+      if (this.waterCooldown > 0) this.waterCooldown--;
+      else if (this.terrain.settleWater()) {
+        this.fieldDirty = true;
+        this.markFabricDirty();
+      }
+    }
   }
 
   /**
@@ -335,8 +349,7 @@ export class World {
    */
   sculpt(stroke: BrushStroke, mode: 'raise' | 'level' = 'raise'): void {
     this.terrain.sculpt(stroke, mode);
-    this.fieldDirty = true;
-    this.markFabricDirty();
+    this.waterCooldown = WATER_SETTLE_TICKS;
   }
 
   /** Force the character field to be recomputed, e.g. after toggling flow. */

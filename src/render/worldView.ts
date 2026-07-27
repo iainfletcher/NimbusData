@@ -10,6 +10,7 @@ import {
   type Fabric,
   type Road,
   type StreetVertex,
+  channelWidth,
   type Person,
   type Vec2,
   type World,
@@ -33,6 +34,17 @@ const PATH = 0xa89878;
 const ROAD = 0x8d8578;
 const ROAD_EDGE = 0x736c62;
 
+/**
+ * One sun, used consistently for terrain relief, wall shading and cast shadows.
+ * Low in the north-west, which is the classic isometric light and keeps the
+ * shadows falling away from the camera rather than across the thing casting them.
+ */
+const SUN = { x: 0.58, y: 0.81 };
+/** Metres of shadow per metre of height. */
+const SHADOW_LENGTH = 0.85;
+const SHADOW_COLOUR = 0x1d2a1c;
+const SHADOW_ALPHA = 0.3;
+
 export class WorldView {
   readonly root = new Container();
 
@@ -48,8 +60,10 @@ export class WorldView {
    * people layer is interleaved between each pair. Sorting is then correct to
    * within one band, and only the people layers are rebuilt each frame.
    */
+  private shadows = new Graphics();
   private staticBands: Graphics[] = [];
   private peopleBands: Graphics[] = [];
+  private dirtyPeopleBands = new Set<number>();
   private ghost = new Graphics();
   private elapsed = 0;
 
@@ -73,7 +87,8 @@ export class WorldView {
     this.projection = projectionFor(mode);
     // Worn paths first, then made roads over them: a road is the more definite
     // thing and should visibly cut across the tracks that predate it.
-    this.root.addChild(this.terrain, this.streets, this.roads, this.overlay);
+    // Shadows lie on the ground, over roads and paths, under everything upright.
+    this.root.addChild(this.terrain, this.streets, this.roads, this.shadows, this.overlay);
 
     for (let i = 0; i < DEPTH_BANDS; i++) {
       const statics = new Graphics();
@@ -170,11 +185,13 @@ export class WorldView {
     }
     if (this.buildingsDirty) {
       this.drawBuildings();
+      this.drawShadows();
       this.buildingsDirty = false;
     }
 
     this.drawPeople();
 
+    this.shadows.visible = this.mode === 'iso';
     this.overlay.visible = this.showOverlay;
     this.streets.visible = this.showStreets;
     this.roads.visible = this.showStreets;
@@ -198,16 +215,20 @@ export class WorldView {
         const wx = cx * CELL_SIZE;
         const wy = cy * CELL_SIZE;
 
-        const h00 = t.heightAt(wx, wy);
-        const h10 = t.heightAt(wx + s, wy);
-        const h01 = t.heightAt(wx, wy + s);
-        const h11 = t.heightAt(wx + s, wy + s);
+        // Sampling exactly on cell corners, so read the grid rather than paying
+        // for a bilinear filter 65,000 times.
+        const h00 = t.heightAtCell(cx, cy);
+        const h10 = t.heightAtCell(cx + step, cy);
+        const h01 = t.heightAtCell(cx, cy + step);
+        const h11 = t.heightAtCell(cx + step, cy + step);
         const avg = (h00 + h10 + h01 + h11) / 4;
 
-        // Cheap relief: light from the north-west.
-        const dz = (h10 + h11) / 2 - (h00 + h01) / 2;
-        const dx = (h01 + h11) / 2 - (h00 + h10) / 2;
-        const relief = Math.max(-0.35, Math.min(0.35, -(dz + dx) * 0.06));
+        // Lambert-ish shading against the same sun the shadows use, which is
+        // what makes the landform read as landform rather than as a colour ramp.
+        const gx = ((h10 + h11) - (h00 + h01)) / (2 * s);
+        const gy = ((h01 + h11) - (h00 + h10)) / (2 * s);
+        const lit = (gx * SUN.x + gy * SUN.y) / Math.sqrt(1 + gx * gx + gy * gy);
+        const relief = Math.max(-0.42, Math.min(0.3, -lit * 0.75));
 
         // Break up the flat green: patchy grazing, drier ground, bare scrapes.
         const patch = (fbm(wx / 55, wy / 55, this.world.seed ^ 0xa17, 2) - 0.5) * 0.2;
@@ -235,40 +256,70 @@ export class WorldView {
    */
   private drawWater(g: Graphics): void {
     const t = this.world.terrain;
+    const hydro = t.hydrology;
     const s = CELL_SIZE;
 
     for (let cy = 0; cy < t.height; cy++) {
+      let runStart = -1;
+      let runLevel = 0;
+      let runColour = 0;
+
+      /** Emit the standing-water run ending before cx as a single quad. */
+      const flush = (cx: number) => {
+        if (runStart < 0) return;
+        const x0 = runStart * CELL_SIZE;
+        const x1 = cx * CELL_SIZE;
+        const y0 = cy * CELL_SIZE;
+        const y1 = y0 + s;
+
+        const p00 = this.project(x0, y0, runLevel);
+        const p10 = this.project(x1, y0, runLevel);
+        const p11 = this.project(x1, y1, runLevel);
+        const p01 = this.project(x0, y1, runLevel);
+        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill(runColour);
+        runStart = -1;
+      };
+
       for (let cx = 0; cx < t.width; cx++) {
-        const wx = cx * CELL_SIZE;
-        const wy = cy * CELL_SIZE;
+        const i = cy * t.width + cx;
+        const level = hydro.surface[i];
+        if (Number.isNaN(level)) {
+          flush(cx);
+          continue;
+        }
 
-        const level = t.waterAt(wx + s / 2, wy + s / 2);
-        if (Number.isNaN(level)) continue;
-
-        const depth = level - t.heightAt(wx + s / 2, wy + s / 2);
+        const depth = level - t.heightAtCell(cx, cy);
         const colour = waterColour(depth);
 
-        // A channel is drawn at least as wide as its catchment deserves, so a
-        // trunk river reads as a river rather than as a line of single cells.
-        const channel = t.channelWidthAt(wx + s / 2, wy + s / 2);
-        const w = Math.max(s, channel);
-        const pad = (w - s) / 2;
-        const x0 = wx - pad;
-        const y0 = wy - pad;
-        const x1 = wx + s + pad;
-        const y1 = wy + s + pad;
+        // Standing water tiles cleanly as squares; a running channel does not.
+        // A stream crossing the grid diagonally comes out as a staircase of
+        // blue boxes, so channels are drawn as overlapping discs instead, which
+        // merge into a continuous course whatever direction they run.
+        if (depth < 1) {
+          flush(cx);
+          // Cell centres are s√2 apart on the diagonal, so a channel narrower
+          // than that leaves gaps and the stream reads as a string of beads.
+          const channel = Math.max(s * 1.62, channelWidth(hydro.accumulation[i]));
+          const p = this.project(cx * CELL_SIZE + s / 2, cy * CELL_SIZE + s / 2, level);
+          const r = channel / 2;
+          if (this.mode === 'plan') g.circle(p.x, p.y, r).fill(colour);
+          else g.ellipse(p.x, p.y, r * 1.414, r * 0.707).fill(colour);
+          continue;
+        }
 
-        // A water surface is level, so all four corners share one elevation.
-        const p00 = this.project(x0, y0, level);
-        const p10 = this.project(x1, y0, level);
-        const p11 = this.project(x1, y1, level);
-        const p01 = this.project(x0, y1, level);
-
-        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
-          color: colour,
-          alpha: depth < 0.4 ? 0.72 : 1,
-        });
+        // A lake or the sea is a flat sheet, so a whole row of it is one quad
+        // rather than eighty. On a coastal map that is thousands of polygons
+        // saved for an identical picture.
+        if (runStart >= 0 && Math.abs(level - runLevel) < 0.01 && colour === runColour) {
+          continue;
+        }
+        flush(cx);
+        runStart = cx;
+        runLevel = level;
+        runColour = colour;
       }
+
+      flush(t.width);
     }
   }
 
@@ -450,6 +501,69 @@ export class WorldView {
     }
   }
 
+  /**
+   * Cast shadows and contact occlusion.
+   *
+   * Flat-shaded low-poly lives or dies on contact shadows: without them
+   * everything looks pasted onto the ground rather than standing on it. Drawn
+   * flat, in one layer under all upright geometry, so they need no depth
+   * sorting against each other — they simply darken whatever they fall across.
+   */
+  private drawShadows(): void {
+    const g = this.shadows;
+    g.clear();
+    if (this.mode === 'plan') return;
+
+    const t = this.world.terrain;
+
+    for (const b of this.world.buildings) {
+      const look = appearanceOf(b.typeId);
+      if (look.form === 'flat') continue;
+
+      const ground = t.heightAt(b.pos.x, b.pos.y);
+      const top = look.eaves + look.rise + (look.tower ? look.tower.height * 0.5 : 0);
+      const reach = top * SHADOW_LENGTH;
+
+      const base = this.footprint(b);
+      const cast: Vec2[] = base.map((c) => ({
+        x: c.x + SUN.x * reach,
+        y: c.y + SUN.y * reach,
+      }));
+
+      // The shadow of a box is the box swept along the light — its convex hull.
+      const hull = convexHull([...base, ...cast]);
+      const pts: number[] = [];
+      for (const p of hull) {
+        const sp = this.project(p.x, p.y, t.heightAt(p.x, p.y));
+        pts.push(sp.x, sp.y);
+      }
+      g.poly(pts).fill({ color: SHADOW_COLOUR, alpha: SHADOW_ALPHA });
+      void ground;
+    }
+
+    // Trees get an offset blob rather than a hull; nobody reads a tree's outline.
+    for (const item of this.world.decor.items) {
+      if (item.kind !== 'tree' && item.kind !== 'conifer') continue;
+      const reach = item.height * SHADOW_LENGTH;
+      const x = item.pos.x + SUN.x * reach;
+      const y = item.pos.y + SUN.y * reach;
+      const p = this.project(x, y, t.heightAt(x, y));
+      g.ellipse(p.x, p.y, item.size * 0.85, item.size * 0.45).fill({
+        color: SHADOW_COLOUR,
+        alpha: SHADOW_ALPHA * 0.8,
+      });
+    }
+
+    // Contact occlusion: a tight smudge where each thing actually meets the
+    // ground, which is what stops it looking like a sticker.
+    for (const b of this.world.buildings) {
+      const type = buildingType(b.typeId);
+      const p = this.projectOnGround(b.pos);
+      const r = Math.max(type.width, type.depth) * 0.62;
+      g.ellipse(p.x, p.y, r, r * 0.5).fill({ color: SHADOW_COLOUR, alpha: 0.22 });
+    }
+  }
+
   private decorContext(): DecorContext {
     return {
       project: (wx, wy, h) => this.project(wx, wy, h),
@@ -476,11 +590,19 @@ export class WorldView {
     }
     entries.sort((a, b) => a.depth - b.depth);
 
+    const used = new Set<number>();
     const ctx = this.decorContext();
     for (const e of entries) {
-      const g = this.staticBands[depthBand(e.depth)];
+      const band = depthBand(e.depth);
+      used.add(band);
+      const g = this.staticBands[band];
       if (e.building) this.drawBuilding(g, e.building, 1);
       else drawDecorItem(g, ctx, e.decor!);
+    }
+
+    // An empty Graphics still goes through the renderer every frame.
+    for (let i = 0; i < this.staticBands.length; i++) {
+      this.staticBands[i].visible = used.has(i);
     }
   }
 
@@ -489,15 +611,20 @@ export class WorldView {
    * a house is painted behind it.
    */
   private drawPeople(): void {
-    for (const band of this.peopleBands) band.clear();
+    // Clearing all 64 bands every frame costs a geometry rebuild per band even
+    // when the band is empty. Only the ones that had somebody in them last
+    // frame need touching, and in a normal town that is a handful.
+    for (const b of this.dirtyPeopleBands) this.peopleBands[b].clear();
+    this.dirtyPeopleBands.clear();
 
     const people = this.world.crowd.people;
     if (people.length === 0) return;
 
     const plan = this.mode === 'plan';
     for (const person of people) {
-      const g = this.peopleBands[depthBand(person.pos.x + person.pos.y)];
-      this.drawPerson(g, person, plan);
+      const band = depthBand(person.pos.x + person.pos.y);
+      this.dirtyPeopleBands.add(band);
+      this.drawPerson(this.peopleBands[band], person, plan);
     }
   }
 
@@ -994,6 +1121,29 @@ export class WorldView {
       valid ? 0x9ad6a0 : 0xd68a8a,
     );
   }
+}
+
+/** Andrew's monotone chain. Eight points at most here, so simplicity wins. */
+function convexHull(points: Vec2[]): Vec2[] {
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (pts.length < 3) return pts;
+
+  const cross = (o: Vec2, a: Vec2, b: Vec2) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+  const build = (source: Vec2[]): Vec2[] => {
+    const out: Vec2[] = [];
+    for (const p of source) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) {
+        out.pop();
+      }
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+
+  return [...build(pts), ...build([...pts].reverse())];
 }
 
 /**

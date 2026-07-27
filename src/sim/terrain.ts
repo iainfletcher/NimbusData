@@ -33,6 +33,7 @@ export class Terrain {
 
   private hydro: Hydrology;
   private version = 0;
+  private waterStale = false;
 
   constructor(seed: number) {
     this.heights = new Float32Array(this.width * this.height);
@@ -43,6 +44,26 @@ export class Terrain {
   /** Bumped whenever the ground or its water changes. */
   get shape(): number {
     return this.version;
+  }
+
+  /** True when the ground has moved but the water has not caught up yet. */
+  get waterPending(): boolean {
+    return this.waterStale;
+  }
+
+  /**
+   * Recompute the water if a sculpt has invalidated it.
+   *
+   * Deriving hydrology is a full flood-fill plus accumulation over the whole
+   * grid — perfectly fine once, and hopeless if it runs on every pointer move
+   * while dragging a brush. The heightmap updates immediately so the ground
+   * responds under the cursor; the water catches up on a beat.
+   */
+  settleWater(): boolean {
+    if (!this.waterStale) return false;
+    this.waterStale = false;
+    this.hydro = this.deriveWater();
+    return true;
   }
 
   get hydrology(): Hydrology {
@@ -138,7 +159,9 @@ export class Terrain {
       }
     }
 
-    this.hydro = this.deriveWater();
+    // The ground has moved; the water follows on the next settle.
+    this.version++;
+    this.waterStale = true;
   }
 
   heightAtCell(cx: number, cy: number): number {
