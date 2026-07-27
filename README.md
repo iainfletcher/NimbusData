@@ -37,10 +37,12 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Buildings snapping to a road frontage, or facing a worn path more loosely
 - Per-character materials and roof forms — brick and slate, render and tile,
   limestone and lead, with spires and chimneys for landmarks
+- Windows, doors, chimneys and per-building weathering
+- Generated detail: woodland, hedged and walled plots, vegetable rows, working
+  yards, churchyards, orchards and greens — none of it placed by the player
 - Place, remove, pan, zoom, pause, and overlays for character and streets
 
-**Not yet built:** infill (yards, walls, garden plots), ambient people, and paving
-a worn path into a road.
+**Not yet built:** ambient people, and paving a worn path into a road.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

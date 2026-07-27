@@ -5,4 +5,5 @@ export * from './buildings';
 export * from './field';
 export * from './roads';
 export * from './fabric';
+export * from './decor';
 export * from './world';

@@ -1,6 +1,8 @@
 import { Container, Graphics } from 'pixi.js';
 import {
   CELL_SIZE,
+  fbm,
+  type DecorItem,
   COHERENCE_THRESHOLD,
   CHARACTER_COUNT,
   buildingType,
@@ -14,6 +16,7 @@ import {
 import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
 import { appearanceOf, type Appearance } from './appearance';
+import { drawDecorItem, type DecorContext } from './decor';
 import { CHARACTER_COLOURS, shade, terrainColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
 
@@ -178,7 +181,9 @@ export class WorldView {
         const dx = (h01 + h11) / 2 - (h00 + h10) / 2;
         const relief = Math.max(-0.35, Math.min(0.35, -(dz + dx) * 0.06));
 
-        const colour = shade(terrainColour(avg), relief);
+        // Break up the flat green: patchy grazing, drier ground, bare scrapes.
+        const patch = (fbm(wx / 55, wy / 55, this.world.seed ^ 0xa17, 2) - 0.5) * 0.2;
+        const colour = shade(terrainColour(avg), relief + (avg > 0 ? patch : 0));
         // Water is flat: drawing its true corner heights makes a jagged mess.
         const flat = avg <= 0;
 
@@ -324,15 +329,44 @@ export class WorldView {
     }
   }
 
+  private decorContext(): DecorContext {
+    return {
+      project: (wx, wy, h) => this.project(wx, wy, h),
+      groundAt: (wx, wy) => this.world.terrain.heightAt(wx, wy),
+      isPlan: this.mode === 'plan',
+    };
+  }
+
+  /**
+   * Buildings and generated detail are drawn in one pass, sorted back to front
+   * together — otherwise a tree in front of a house would be painted behind it.
+   */
   private drawBuildings(): void {
     const g = this.buildings;
     g.clear();
 
-    // Painter's algorithm: in iso, things further "back" must be drawn first.
-    const sorted = [...this.world.buildings].sort(
-      (a, b) => a.pos.x + a.pos.y - (b.pos.x + b.pos.y),
-    );
-    for (const b of sorted) this.drawBuilding(g, b, 1);
+    type Entry = { depth: number; building?: Building; decor?: DecorItem };
+    const entries: Entry[] = [];
+
+    for (const b of this.world.buildings) {
+      entries.push({ depth: b.pos.x + b.pos.y, building: b });
+    }
+    for (const d of this.world.decor.items) {
+      entries.push({ depth: d.pos.x + d.pos.y, decor: d });
+    }
+    entries.sort((a, b) => a.depth - b.depth);
+
+    const ctx = this.decorContext();
+    for (const e of entries) {
+      if (e.building) this.drawBuilding(g, e.building, 1);
+      else drawDecorItem(g, ctx, e.decor!);
+    }
+  }
+
+  /** Small deterministic per-building variation, so a terrace isn't clones. */
+  private jitter(id: number, salt: number): number {
+    const h = Math.sin(id * 12.9898 + salt * 78.233) * 43758.5453;
+    return h - Math.floor(h);
   }
 
   /** Local (dx, dy) in the building's own frame → world position. */
@@ -363,8 +397,12 @@ export class WorldView {
    */
   private drawBuilding(g: Graphics, b: Building, alpha: number, tint?: number): void {
     const look = appearanceOf(b.typeId);
-    const wall = tint ?? look.wall;
-    const roof = tint ?? look.roof;
+    // Weathering: no two buildings in a row are quite the same shade or height.
+    const vw = (this.jitter(b.id, 1) - 0.5) * 0.14;
+    const vr = (this.jitter(b.id, 2) - 0.5) * 0.16;
+    const vh = 0.93 + this.jitter(b.id, 3) * 0.14;
+    const wall = tint ?? shade(look.wall, vw);
+    const roof = tint ?? shade(look.roof, vr);
     const ground = this.world.terrain.heightAt(b.pos.x, b.pos.y);
     const corners = this.footprint(b);
 
@@ -378,7 +416,8 @@ export class WorldView {
       return;
     }
 
-    const eaves = ground + look.eaves;
+    const eavesHeight = look.form === 'flat' ? look.eaves : look.eaves * vh;
+    const eaves = ground + eavesHeight;
     const base = corners.map((c) => this.project(c.x, c.y, ground));
     const top = corners.map((c) => this.project(c.x, c.y, eaves));
 
@@ -390,14 +429,36 @@ export class WorldView {
       })
       .sort((a, c) => a.depth - c.depth);
 
-    for (const w of walls) {
-      const sideOn = Math.abs(corners[w.j].x - corners[w.i].x) > Math.abs(corners[w.j].y - corners[w.i].y);
+    for (let wi = 0; wi < walls.length; wi++) {
+      const w = walls[wi];
+      const sideOn =
+        Math.abs(corners[w.j].x - corners[w.i].x) > Math.abs(corners[w.j].y - corners[w.i].y);
+      const face = shade(wall, sideOn ? -0.12 : -0.26);
+
       g.poly([
         top[w.i].x, top[w.i].y,
         top[w.j].x, top[w.j].y,
         base[w.j].x, base[w.j].y,
         base[w.i].x, base[w.i].y,
-      ]).fill({ color: shade(wall, sideOn ? -0.12 : -0.26), alpha });
+      ]).fill({ color: face, alpha });
+
+      // Openings only on the walls actually facing the camera, and a door only
+      // on the nearest one — a building with four front doors looks wrong.
+      if (!tint && look.form !== 'flat' && wi >= walls.length - 2) {
+        const length = Math.hypot(
+          corners[w.j].x - corners[w.i].x,
+          corners[w.j].y - corners[w.i].y,
+        );
+        this.drawOpenings(
+          g,
+          [base[w.i], base[w.j], top[w.j], top[w.i]],
+          length,
+          eavesHeight,
+          face,
+          wi === walls.length - 1,
+          b.id + wi,
+        );
+      }
     }
 
     if (look.form === 'flat') {
@@ -406,9 +467,105 @@ export class WorldView {
       ]).fill({ color: shade(wall, 0.1), alpha });
     } else {
       this.drawRoof(g, b, look, eaves, alpha, wall, roof);
+      if (!tint) this.drawChimney(g, b, look, eaves, roof);
     }
 
     if (look.tower) this.drawTower(g, b, look, ground, alpha, wall, roof);
+  }
+
+  /**
+   * Windows and a door, placed on a wall face by interpolating its projected
+   * corners. The projection is affine, so this is exact rather than approximate.
+   *
+   * Openings are what make a wall read as inhabited rather than as a slab, and
+   * at this scale they cost four points each.
+   */
+  private drawOpenings(
+    g: Graphics,
+    face: [Point, Point, Point, Point],
+    worldLength: number,
+    worldHeight: number,
+    wallColour: number,
+    withDoor: boolean,
+    salt: number,
+  ): void {
+    const [b0, b1, t1, t0] = face;
+
+    // u runs along the wall, v up it.
+    const at = (u: number, v: number): Point => ({
+      x: b0.x + (b1.x - b0.x) * u + ((t0.x - b0.x) + ((t1.x - b1.x) - (t0.x - b0.x)) * u) * v,
+      y: b0.y + (b1.y - b0.y) * u + ((t0.y - b0.y) + ((t1.y - b1.y) - (t0.y - b0.y)) * u) * v,
+    });
+
+    const quad = (u0: number, v0: number, u1: number, v1: number, colour: number) => {
+      const p00 = at(u0, v0);
+      const p10 = at(u1, v0);
+      const p11 = at(u1, v1);
+      const p01 = at(u0, v1);
+      g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill(colour);
+    };
+
+    const glass = shade(wallColour, -0.52);
+    const door = shade(wallColour, -0.62);
+
+    const columns = Math.max(1, Math.min(6, Math.floor(worldLength / 3.4)));
+    const rows = Math.max(1, Math.min(3, Math.floor(worldHeight / 3.1)));
+
+    const winW = Math.min(0.16, (0.8 / columns) * 0.62);
+    const winH = Math.min(0.2, (0.72 / rows) * 0.6);
+
+    for (let r = 0; r < rows; r++) {
+      const v = 0.24 + (r * 0.62) / rows;
+      for (let c = 0; c < columns; c++) {
+        const u = (c + 0.5) / columns;
+        // Ground-floor centre is the doorway, so skip the window there.
+        if (withDoor && r === 0 && Math.abs(u - 0.5) < 0.5 / columns) continue;
+        quad(u - winW / 2, v, u + winW / 2, v + winH, glass);
+      }
+    }
+
+    if (withDoor) {
+      const w = Math.min(0.13, 0.6 / columns);
+      quad(0.5 - w / 2, 0.02, 0.5 + w / 2, 0.02 + Math.min(0.34, 2.1 / worldHeight), door);
+    }
+    void salt;
+  }
+
+  /** A stack at the gable end. Most of what says "somebody lives here". */
+  private drawChimney(
+    g: Graphics,
+    b: Building,
+    look: Appearance,
+    eaves: number,
+    roof: number,
+  ): void {
+    const type = buildingType(b.typeId);
+    if (look.tower || type.family === 'economic') return;
+    if (Math.min(type.width, type.depth) < 6) return;
+
+    const halfU = (look.ridgeAlongWidth ? type.width : type.depth) / 2;
+    const u = halfU - 1.2;
+    const p = look.ridgeAlongWidth ? this.local(b, u, 0) : this.local(b, 0, u);
+
+    const w = 0.7;
+    const corners = [
+      { x: p.x - w, y: p.y - w },
+      { x: p.x + w, y: p.y - w },
+      { x: p.x + w, y: p.y + w },
+      { x: p.x - w, y: p.y + w },
+    ];
+    const bottom = corners.map((c) => this.project(c.x, c.y, eaves));
+    const cap = corners.map((c) => this.project(c.x, c.y, eaves + look.rise + 1.6));
+
+    for (const i of [0, 1, 2, 3]) {
+      const j = (i + 1) % 4;
+      g.poly([
+        cap[i].x, cap[i].y, cap[j].x, cap[j].y, bottom[j].x, bottom[j].y, bottom[i].x, bottom[i].y,
+      ]).fill(shade(roof, -0.3));
+    }
+    g.poly([
+      cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
+    ]).fill(shade(roof, -0.5));
   }
 
   private drawRoof(

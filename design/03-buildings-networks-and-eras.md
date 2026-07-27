@@ -43,6 +43,17 @@ It means trees are **not your job**. They come with parks, they line roads, they
 grow in gardens, they fill the gaps. You get the density and the charm without the
 labour.
 
+**Built** (`src/sim/decor.ts`). Woodland follows a noise field so it forms copses
+and shelter belts, and thins over a wide clearing around the town because people
+cut it back. Every building gets a plot behind it, bounded by a hedge or a wall,
+filled according to what it is: vegetable rows behind a cottage, a woodpile and
+barrels behind a workshop, gravestones round a church.
+
+One tuning lesson worth recording: the first pass had trees growing to within 45m
+of the buildings, and the wood **swallowed the town**. Charming for ten seconds,
+then it hides the entire game. The clearing has to be generous and it has to fade
+in gradually, or the settlement stops reading.
+
 This is already in the design — it's Pillar B's infill from `00`. The player
 supplies **structure**; evolution supplies **detail**. Trees, hedges, benches,
 fences, walls, washing lines, market stalls: all generated, never placed.

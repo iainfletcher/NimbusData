@@ -3,6 +3,7 @@ import { Terrain } from './terrain';
 import { buildingType } from './buildings';
 import { emptyFabric, generateFabric, orientToFabric, type Fabric } from './fabric';
 import { nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
+import { emptyDecor, generateDecor, type Decor } from './decor';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -35,6 +36,7 @@ export class World {
   private fabricDirty = false;
   private fabricCooldown = 0;
   private _fabricVersion = 0;
+  private _decor: Decor = emptyDecor();
 
   constructor(readonly seed: number) {
     this.terrain = new Terrain(seed);
@@ -150,6 +152,11 @@ export class World {
     return this._fabric;
   }
 
+  /** Generated detail — trees, hedges, garden rows. Never placed by the player. */
+  get decor(): Decor {
+    return this._decor;
+  }
+
   /** Bumped whenever the fabric is rebuilt, so renderers know to redraw. */
   get fabricVersion(): number {
     return this._fabricVersion;
@@ -159,6 +166,14 @@ export class World {
   rebuildFabric(): void {
     this._fabric = generateFabric(this.terrain, this.buildings, this.roads, this.seed);
     orientToFabric(this.buildings, this._fabric, this.roads);
+    // Decor follows the fabric: plots sit behind whatever a building faces.
+    this._decor = generateDecor(
+      this.terrain,
+      this.buildings,
+      this.roads,
+      this._fabric,
+      this.seed,
+    );
     this.fabricDirty = false;
     this.fabricCooldown = 0;
     this._fabricVersion++;
