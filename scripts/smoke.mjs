@@ -74,13 +74,24 @@ await page.screenshot({ path: join(OUT, '04-plan.png') });
 // from material and form rather than from a debug colour.
 await page.click('#view-iso');
 await page.waitForTimeout(600);
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < 9; i++) {
   await page.mouse.move(700, 420);
   await page.mouse.wheel(0, -240);
   await page.waitForTimeout(120);
 }
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(OUT, '05-close.png') });
+
+// People should be somewhere different a moment later.
+const peopleMoved = await page.evaluate(async () => {
+  const canvas = document.querySelector('canvas');
+  const grab = () => canvas.toDataURL().length;
+  const before = grab();
+  await new Promise((r) => setTimeout(r, 700));
+  return grab() !== before;
+});
+await page.screenshot({ path: join(OUT, '06-close-later.png') });
+console.log(`scene animating:         ${peopleMoved}`);
 
 await browser.close();
 

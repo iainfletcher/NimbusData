@@ -10,12 +10,14 @@ import {
   type Fabric,
   type Road,
   type StreetVertex,
+  type Person,
   type Vec2,
   type World,
 } from '../sim';
+import { WORLD_SIZE } from '../sim';
 import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
-import { appearanceOf, type Appearance } from './appearance';
+import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
 import { drawDecorItem, type DecorContext } from './decor';
 import { CHARACTER_COLOURS, shade, terrainColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
@@ -38,8 +40,18 @@ export class WorldView {
   private streets = new Graphics();
   private roads = new Graphics();
   private overlay = new Graphics();
-  private buildings = new Graphics();
+  /**
+   * Buildings, decor and people all have to sort against each other, but the
+   * first two are static and the third moves every frame. Redrawing thousands of
+   * trees at 60fps to keep one pedestrian behind a house would be absurd, so the
+   * world is sliced into depth bands: static content is cached per band, and a
+   * people layer is interleaved between each pair. Sorting is then correct to
+   * within one band, and only the people layers are rebuilt each frame.
+   */
+  private staticBands: Graphics[] = [];
+  private peopleBands: Graphics[] = [];
   private ghost = new Graphics();
+  private elapsed = 0;
 
   private projection: Projection;
   private terrainCacheMode: ViewMode | null = null;
@@ -60,14 +72,17 @@ export class WorldView {
     this.projection = projectionFor(mode);
     // Worn paths first, then made roads over them: a road is the more definite
     // thing and should visibly cut across the tracks that predate it.
-    this.root.addChild(
-      this.terrain,
-      this.streets,
-      this.roads,
-      this.overlay,
-      this.buildings,
-      this.ghost,
-    );
+    this.root.addChild(this.terrain, this.streets, this.roads, this.overlay);
+
+    for (let i = 0; i < DEPTH_BANDS; i++) {
+      const statics = new Graphics();
+      const people = new Graphics();
+      this.staticBands.push(statics);
+      this.peopleBands.push(people);
+      this.root.addChild(statics, people);
+    }
+
+    this.root.addChild(this.ghost);
   }
 
   get viewMode(): ViewMode {
@@ -120,7 +135,9 @@ export class WorldView {
     return this.project(p.x, p.y, this.world.terrain.heightAt(p.x, p.y));
   }
 
-  render(): void {
+  render(dtSeconds = 0): void {
+    this.elapsed += dtSeconds;
+
     if (this.terrainCacheMode !== this.mode) {
       this.drawTerrain();
       this.terrainCacheMode = this.mode;
@@ -146,6 +163,8 @@ export class WorldView {
       this.drawBuildings();
       this.buildingsDirty = false;
     }
+
+    this.drawPeople();
 
     this.overlay.visible = this.showOverlay;
     this.streets.visible = this.showStreets;
@@ -342,8 +361,7 @@ export class WorldView {
    * together — otherwise a tree in front of a house would be painted behind it.
    */
   private drawBuildings(): void {
-    const g = this.buildings;
-    g.clear();
+    for (const band of this.staticBands) band.clear();
 
     type Entry = { depth: number; building?: Building; decor?: DecorItem };
     const entries: Entry[] = [];
@@ -358,9 +376,58 @@ export class WorldView {
 
     const ctx = this.decorContext();
     for (const e of entries) {
+      const g = this.staticBands[depthBand(e.depth)];
       if (e.building) this.drawBuilding(g, e.building, 1);
       else drawDecorItem(g, ctx, e.decor!);
     }
+  }
+
+  /**
+   * People, redrawn every frame into their depth band so a figure walking behind
+   * a house is painted behind it.
+   */
+  private drawPeople(): void {
+    for (const band of this.peopleBands) band.clear();
+
+    const people = this.world.crowd.people;
+    if (people.length === 0) return;
+
+    const plan = this.mode === 'plan';
+    for (const person of people) {
+      const g = this.peopleBands[depthBand(person.pos.x + person.pos.y)];
+      this.drawPerson(g, person, plan);
+    }
+  }
+
+  private drawPerson(g: Graphics, person: Person, plan: boolean): void {
+    const ground = this.world.terrain.heightAt(person.pos.x, person.pos.y);
+    const base = this.project(person.pos.x, person.pos.y, ground);
+    const colour = CLOTHING[person.tint % CLOTHING.length];
+
+    if (plan) {
+      g.circle(base.x, base.y, 1.1).fill(colour);
+      return;
+    }
+
+    // Deliberately out of scale. A correctly proportioned person is a two-pixel
+    // sliver next to a house and reads as noise; toy cities want chunky figures,
+    // as Theme Park and Settlers both understood.
+    const bob = Math.sin(this.elapsed * person.speed * 5.5 + person.phase) * 0.12;
+    const head = this.project(person.pos.x, person.pos.y, ground + 3.1 + bob);
+    const shoulder = this.project(person.pos.x, person.pos.y, ground + 2.4 + bob);
+
+    // A scrap of shadow, which is most of what roots a figure to the ground.
+    g.ellipse(base.x, base.y, 0.8, 0.4).fill({ color: 0x2f3a2c, alpha: 0.3 });
+
+    const halfW = 0.52;
+    g.poly([
+      base.x - halfW * 0.8, base.y,
+      base.x + halfW * 0.8, base.y,
+      shoulder.x + halfW, shoulder.y,
+      shoulder.x - halfW, shoulder.y,
+    ]).fill(colour);
+
+    g.circle(head.x, head.y, 0.62).fill(SKIN);
   }
 
   /** Small deterministic per-building variation, so a terrace isn't clones. */
@@ -456,7 +523,7 @@ export class WorldView {
           eavesHeight,
           face,
           wi === walls.length - 1,
-          b.id + wi,
+          look.framed === true,
         );
       }
     }
@@ -487,7 +554,7 @@ export class WorldView {
     worldHeight: number,
     wallColour: number,
     withDoor: boolean,
-    salt: number,
+    framed: boolean,
   ): void {
     const [b0, b1, t1, t0] = face;
 
@@ -528,7 +595,28 @@ export class WorldView {
       const w = Math.min(0.13, 0.6 / columns);
       quad(0.5 - w / 2, 0.02, 0.5 + w / 2, 0.02 + Math.min(0.34, 2.1 / worldHeight), door);
     }
-    void salt;
+
+    // Exposed frame: posts, a sill and a wall plate. Drawn last so the beams sit
+    // over the render, which is how a timber-framed wall actually goes together.
+    if (framed) {
+      const beam = TIMBER_FRAME;
+      const posts = Math.max(2, Math.min(7, Math.round(worldLength / 2.4)));
+      const thickness = Math.min(0.035, 0.5 / posts);
+
+      for (let i = 0; i <= posts; i++) {
+        const u = i / posts;
+        quad(
+          Math.max(0, u - thickness),
+          0,
+          Math.min(1, u + thickness),
+          1,
+          beam,
+        );
+      }
+      quad(0, 0.94, 1, 1, beam);
+      if (worldHeight > 5) quad(0, 0.45, 1, 0.51, beam);
+      quad(0, 0, 1, 0.05, beam);
+    }
   }
 
   /** A stack at the gable end. Most of what says "somebody lives here". */
@@ -585,8 +673,11 @@ export class WorldView {
     // Along the ridge is "u"; across it is "v". Working in the building's own
     // frame keeps gable and hip identical apart from the inset.
     const alongWidth = look.ridgeAlongWidth;
-    const halfU = alongWidth ? hw : hd;
-    const halfV = alongWidth ? hd : hw;
+    // The roof oversails the walls. A flush roof reads as a box; an overhang is
+    // most of what makes a building look built rather than extruded.
+    const over = look.overhang ?? 0.5;
+    const halfU = (alongWidth ? hw : hd) + over;
+    const halfV = (alongWidth ? hd : hw) + over;
     const inset = look.form === 'hip' ? Math.min(halfU * 0.45, halfV) : 0;
 
     const at = (u: number, v: number, h: number) => {
@@ -625,6 +716,14 @@ export class WorldView {
       slopeNeg();
     }
 
+    // A ridge cap, so the two slopes meet in a line rather than a seam.
+    g.poly([
+      ridgeA.x, ridgeA.y - 0.6, ridgeB.x, ridgeB.y - 0.6,
+      ridgeB.x, ridgeB.y + 0.5, ridgeA.x, ridgeA.y + 0.5,
+    ]).fill({ color: shade(roof, -0.3), alpha });
+
+    if (look.dormers) this.drawDormers(g, look, at, halfU, halfV, eaves, ridgeH, alpha, wall, roof);
+
     if (look.form === 'hip') {
       // Hipped ends are roof, not wall.
       g.poly([
@@ -635,13 +734,84 @@ export class WorldView {
       ]).fill({ color: shade(roof, -0.05), alpha });
     } else {
       // Gable ends are wall carried up to the ridge — the silhouette that reads
-      // most strongly as a house.
+      // most strongly as a house. They stand on the wall line, inside the eaves.
+      const wallU = halfU - over;
+      const wallV = halfV - over;
+      const gNegA = at(-wallU, -wallV, eaves);
+      const gPosA = at(-wallU, wallV, eaves);
+      const gNegB = at(wallU, -wallV, eaves);
+      const gPosB = at(wallU, wallV, eaves);
+      const apexA = at(-wallU, 0, ridgeH);
+      const apexB = at(wallU, 0, ridgeH);
+
       g.poly([
-        eaveNegA.x, eaveNegA.y, eavePosA.x, eavePosA.y, ridgeA.x, ridgeA.y,
+        gNegA.x, gNegA.y, gPosA.x, gPosA.y, apexA.x, apexA.y,
       ]).fill({ color: shade(wall, -0.2), alpha });
       g.poly([
-        eaveNegB.x, eaveNegB.y, eavePosB.x, eavePosB.y, ridgeB.x, ridgeB.y,
+        gNegB.x, gNegB.y, gPosB.x, gPosB.y, apexB.x, apexB.y,
       ]).fill({ color: shade(wall, -0.2), alpha });
+    }
+  }
+
+  /**
+   * Dormers: little gabled windows pushed through the roof slope. Cheap, and
+   * they do more for the character of a row of housing than anything else here.
+   */
+  private drawDormers(
+    g: Graphics,
+    look: Appearance,
+    at: (u: number, v: number, h: number) => Point,
+    halfU: number,
+    halfV: number,
+    eaves: number,
+    ridgeH: number,
+    alpha: number,
+    wall: number,
+    roof: number,
+  ): void {
+    const n = look.dormers ?? 0;
+    if (n < 1) return;
+
+    // Two thirds of the way up the slope, facing the near side.
+    const t = 0.52;
+    const v = halfV * (1 - t);
+    const h = eaves + (ridgeH - eaves) * t;
+    const halfSpan = halfU * 0.72;
+    const width = Math.min(1.5, (halfSpan * 1.6) / (n * 2.2));
+
+    for (let i = 0; i < n; i++) {
+      const u = n === 1 ? 0 : -halfSpan + (2 * halfSpan * i) / (n - 1);
+
+      const faceL = at(u - width, v, h);
+      const faceR = at(u + width, v, h);
+      const topL = at(u - width, v, h + 1.5);
+      const topR = at(u + width, v, h + 1.5);
+      const apex = at(u, v, h + 2.4);
+      const backL = at(u - width, v + 1.4, h + 1.5);
+      const backR = at(u + width, v + 1.4, h + 1.5);
+
+      // Cheek, face, gable and a little roof over it.
+      g.poly([
+        faceL.x, faceL.y, topL.x, topL.y, backL.x, backL.y,
+      ]).fill({ color: shade(roof, -0.24), alpha });
+      g.poly([
+        faceL.x, faceL.y, faceR.x, faceR.y, topR.x, topR.y, topL.x, topL.y,
+      ]).fill({ color: shade(wall, -0.06), alpha });
+      g.poly([
+        topL.x, topL.y, topR.x, topR.y, apex.x, apex.y,
+      ]).fill({ color: shade(wall, -0.18), alpha });
+      g.poly([
+        topL.x, topL.y, topR.x, topR.y, backR.x, backR.y, backL.x, backL.y,
+      ]).fill({ color: shade(roof, 0.12), alpha });
+
+      // The window itself.
+      const wl = at(u - width * 0.55, v, h + 0.35);
+      const wr = at(u + width * 0.55, v, h + 0.35);
+      const wtl = at(u - width * 0.55, v, h + 1.2);
+      const wtr = at(u + width * 0.55, v, h + 1.2);
+      g.poly([
+        wl.x, wl.y, wr.x, wr.y, wtr.x, wtr.y, wtl.x, wtl.y,
+      ]).fill({ color: shade(wall, -0.55), alpha });
     }
   }
 
@@ -723,6 +893,21 @@ export class WorldView {
     );
   }
 }
+
+/**
+ * Depth bands used to interleave moving people with cached static content. More
+ * bands means finer sorting; 64 puts the error under about 25m of world depth.
+ */
+const DEPTH_BANDS = 64;
+
+function depthBand(depth: number): number {
+  const t = depth / (WORLD_SIZE * 2);
+  return Math.max(0, Math.min(DEPTH_BANDS - 1, Math.floor(t * DEPTH_BANDS)));
+}
+
+/** Muted working clothes: madder, woad, undyed wool, russet. */
+const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
+const SKIN = 0xc9a887;
 
 /** Offset a street centreline to both kerbs, mitring at each vertex. */
 function offsetPath(path: StreetVertex[]): { left: Vec2[]; right: Vec2[] } {

@@ -4,6 +4,7 @@ import { buildingType } from './buildings';
 import { emptyFabric, generateFabric, orientToFabric, type Fabric } from './fabric';
 import { nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
 import { emptyDecor, generateDecor, type Decor } from './decor';
+import { Crowd } from './people';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -37,6 +38,7 @@ export class World {
   private fabricCooldown = 0;
   private _fabricVersion = 0;
   private _decor: Decor = emptyDecor();
+  readonly crowd = new Crowd();
 
   constructor(readonly seed: number) {
     this.terrain = new Terrain(seed);
@@ -174,6 +176,8 @@ export class World {
       this._fabric,
       this.seed,
     );
+    // People walk the network, so they have to be rehomed when it changes.
+    this.crowd.reset(this.roads, this._fabric, this.buildings.length, this.seed);
     this.fabricDirty = false;
     this.fabricCooldown = 0;
     this._fabricVersion++;
@@ -195,6 +199,14 @@ export class World {
       if (this.fabricCooldown > 0) this.fabricCooldown--;
       else this.rebuildFabric();
     }
+  }
+
+  /**
+   * Ambient people advance on real elapsed time rather than the sim tick, since
+   * they feed back into nothing and 10Hz walking looks like stop-motion.
+   */
+  updatePeople(dtSeconds: number): void {
+    this.crowd.update(dtSeconds);
   }
 
   private markFabricDirty(): void {

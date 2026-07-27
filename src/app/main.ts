@@ -310,11 +310,13 @@ async function main(): Promise<void> {
   const rBuilding = el('r-building');
   const rCount = el('r-count');
   const rStreets = el('r-streets');
+  const rPeople = el('r-people');
   const rTicks = el('r-ticks');
 
   function updateReadout(): void {
     rCount.textContent = String(world.buildings.length);
     rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;
+    rPeople.textContent = String(world.crowd.people.length);
     rTicks.textContent = String(world.ticks);
 
     if (!cursor) {
@@ -376,7 +378,10 @@ async function main(): Promise<void> {
       );
     }
 
-    view.render();
+    const dt = ticker.deltaMS / 1000;
+    if (!paused) world.updatePeople(dt);
+
+    view.render(paused ? 0 : dt);
     updateReadout();
   });
 }

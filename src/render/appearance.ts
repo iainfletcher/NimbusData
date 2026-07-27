@@ -27,6 +27,12 @@ export interface Appearance {
   ridgeAlongWidth: boolean;
   /** A spire or bell tower at one end — landmarks only. */
   tower?: { height: number; width: number };
+  /** Exposed timber frame on the walls. */
+  framed?: boolean;
+  /** Dormer windows in the roof slope. */
+  dormers?: number;
+  /** How far the roof oversails the walls, in metres. */
+  overhang?: number;
 }
 
 /** Material palettes, one per character. Chosen as materials, not as hues. */
@@ -48,6 +54,9 @@ const MATERIALS: Record<Character, { wall: number; roof: number }> = {
 /** Vegetation, for the things that aren't really buildings. */
 const FOLIAGE = { wall: 0x4d7a44, roof: 0x3f6a38 };
 
+/** Dark oak, for the framed buildings. */
+export const TIMBER_FRAME = 0x4a3626;
+
 const DEFAULT: Appearance = {
   wall: 0xa89b88,
   roof: 0x7a6f63,
@@ -55,37 +64,38 @@ const DEFAULT: Appearance = {
   eaves: 4.5,
   rise: 3,
   ridgeAlongWidth: true,
+  overhang: 0.5,
 };
 
 /** Per-type overrides, where a building wants a specific silhouette. */
 const OVERRIDES: Record<string, Partial<Appearance>> = {
   // Landmarks: taller, steeper, and the church gets its tower.
-  church: { eaves: 9, rise: 7, form: 'gable', tower: { height: 20, width: 5.5 } },
-  chapel: { eaves: 6, rise: 4.5 },
-  guildhall: { eaves: 8, rise: 4, form: 'hip' },
-  market: { eaves: 4, rise: 2.5, form: 'hip' },
+  church: { eaves: 9, rise: 7, form: 'gable', tower: { height: 20, width: 5.5 }, overhang: 0.4 },
+  chapel: { eaves: 6, rise: 4.5, overhang: 0.4 },
+  guildhall: { eaves: 8, rise: 4, form: 'hip', framed: true, overhang: 0.9 },
+  market: { eaves: 4, rise: 2.5, form: 'hip', overhang: 1.4 },
 
   // Industry: big sheds, shallow roofs, tall stacks read as chimneys.
-  foundry: { eaves: 9, rise: 2.5, form: 'gable', tower: { height: 19, width: 2.6 } },
-  tannery: { eaves: 6, rise: 2 },
-  sawmill: { eaves: 6, rise: 2.5 },
-  workshop: { eaves: 5, rise: 2.5 },
-  warehouse: { eaves: 8, rise: 2 },
-  watermill: { eaves: 7, rise: 3.5 },
-  farm: { eaves: 5.5, rise: 4 },
+  foundry: { eaves: 9, rise: 2.5, form: 'gable', tower: { height: 19, width: 2.6 }, overhang: 0.3 },
+  tannery: { eaves: 6, rise: 2, overhang: 0.4 },
+  sawmill: { eaves: 6, rise: 2.5, framed: true, overhang: 0.8 },
+  workshop: { eaves: 5, rise: 2.5, framed: true, overhang: 0.7 },
+  warehouse: { eaves: 8, rise: 2, overhang: 0.4 },
+  watermill: { eaves: 7, rise: 3.5, framed: true, overhang: 0.7 },
+  farm: { eaves: 5.5, rise: 4, framed: true, overhang: 0.8 },
 
   // Not buildings: ground cover with no roof to speak of.
   green: { form: 'flat', eaves: 0.4, rise: 0, wall: FOLIAGE.wall, roof: FOLIAGE.roof },
   orchard: { form: 'flat', eaves: 1.6, rise: 0, wall: FOLIAGE.wall, roof: FOLIAGE.roof },
 
   // Housing: the evolved forms are what actually distinguish a quarter.
-  cottage: { eaves: 3.6, rise: 2.8 },
-  terrace: { eaves: 6.5, rise: 2.4, ridgeAlongWidth: true },
-  merchant_house: { eaves: 7.5, rise: 3.2, ridgeAlongWidth: false },
-  close_cottage: { eaves: 4, rise: 3.4 },
-  farmhouse: { eaves: 4.6, rise: 3.8 },
-  lodging_house: { eaves: 7, rise: 2.8 },
-  garden_cottage: { eaves: 3.8, rise: 3 },
+  cottage: { eaves: 3.6, rise: 2.8, framed: true, overhang: 0.7 },
+  terrace: { eaves: 6.5, rise: 2.4, ridgeAlongWidth: true, dormers: 3, overhang: 0.4 },
+  merchant_house: { eaves: 7.5, rise: 3.2, ridgeAlongWidth: false, framed: true, overhang: 0.9 },
+  close_cottage: { eaves: 4, rise: 3.4, dormers: 1, overhang: 0.6 },
+  farmhouse: { eaves: 4.6, rise: 3.8, framed: true, dormers: 1, overhang: 0.8 },
+  lodging_house: { eaves: 7, rise: 2.8, framed: true, dormers: 2, overhang: 0.9 },
+  garden_cottage: { eaves: 3.8, rise: 3, framed: true, overhang: 0.7 },
 };
 
 const CACHE = new Map<string, Appearance>();

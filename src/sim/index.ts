@@ -6,4 +6,5 @@ export * from './field';
 export * from './roads';
 export * from './fabric';
 export * from './decor';
+export * from './people';
 export * from './world';
