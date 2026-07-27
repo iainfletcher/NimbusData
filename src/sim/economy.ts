@@ -2,6 +2,7 @@ import { buildingType } from './buildings';
 import { harvestable, type Land } from './land';
 import type { Terrain } from './terrain';
 import type { Building } from './types';
+import type { SeasonEffects } from './calendar';
 
 /**
  * A deliberately light resource layer (design/00, Axis 3).
@@ -35,10 +36,10 @@ const CATCHMENT = 120;
 /** Scale factors turning raw potential into a sane rate per tick. */
 const TIMBER_RATE = 0.0022;
 const STONE_RATE = 0.0026;
-const FOOD_RATE = 0.0034;
+const FOOD_RATE = 0.0062;
 
 /** A household eats this much per tick. */
-const FOOD_PER_HOUSEHOLD = 0.055;
+const FOOD_PER_HOUSEHOLD = 0.042;
 
 export class Economy {
   readonly stocks: Stocks = { timber: 120, stone: 80, food: 100 };
@@ -48,7 +49,12 @@ export class Economy {
   /** True when food ran out — growth stops until it doesn't. */
   hungry = false;
 
-  update(buildings: readonly Building[], land: Land, terrain: Terrain): void {
+  update(
+    buildings: readonly Building[],
+    land: Land,
+    terrain: Terrain,
+    season: SeasonEffects = { harvest: 1, labour: 1, appetite: 1 },
+  ): void {
     let timber = 0;
     let stone = 0;
     let food = 0;
@@ -77,7 +83,12 @@ export class Economy {
       }
     }
 
-    const eaten = households * FOOD_PER_HOUSEHOLD;
+    // Winter is the pressure: it takes more than it gives, every year, whatever
+    // the player does (design/00, Axis 7).
+    timber *= season.labour;
+    stone *= season.labour;
+    food *= season.harvest;
+    const eaten = households * FOOD_PER_HOUSEHOLD * season.appetite;
 
     this.rates.timber = timber;
     this.rates.stone = stone;

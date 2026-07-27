@@ -6,7 +6,9 @@ import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type Roa
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
-import { OWNER_PLAYER, Territory } from './territory';
+import { OWNER_PLAYER, OWNER_RIVAL, Territory } from './territory';
+import { Calendar } from './calendar';
+import { Rival } from './rival';
 import { Economy, roadCost } from './economy';
 import { computeLand, type Land } from './land';
 import { planRoads, type PlanSpec } from './plans';
@@ -60,6 +62,10 @@ export class World {
   private conductance: Conductance = openGround();
   readonly territory = new Territory();
   readonly economy = new Economy();
+  readonly calendar = new Calendar();
+  private rival: Rival;
+  /** How many buildings the rival has added since the start. */
+  rivalBuilt = 0;
   private land: Land;
   private territoryCooldown = 0;
   /**
@@ -80,6 +86,7 @@ export class World {
     this.nameRng = makeNameRng(seed);
     this.name = townName(this.nameRng);
     this.land = computeLand(this.terrain, seed);
+    this.rival = new Rival(seed);
   }
 
   /**
@@ -385,9 +392,25 @@ export class World {
       this.nameRoads();
     }
 
+    this.calendar.advance();
+
     for (const b of this.buildings) b.age++;
 
-    this.economy.update(this.buildings, this.land, this.terrain);
+    this.economy.update(this.buildings, this.land, this.terrain, this.calendar.effects);
+
+    // The rival only proposes; the world decides whether the ground allows it.
+    for (const move of this.rival.propose(this.buildings, this.field, this.territory)) {
+      const placed = this.place(
+        move.typeId,
+        move.pos,
+        this.rivalFacing(move.pos),
+        OWNER_RIVAL,
+      );
+      if (placed.ok) {
+        this.rivalBuilt++;
+        break;
+      }
+    }
 
     this.evolveHousing();
 
@@ -433,6 +456,12 @@ export class World {
   sculpt(stroke: BrushStroke, mode: 'raise' | 'level' = 'raise'): void {
     this.terrain.sculpt(stroke, mode);
     this.waterCooldown = WATER_SETTLE_TICKS;
+  }
+
+  /** Face a new rival building at its own nearest road, as the player's do. */
+  private rivalFacing(pos: Vec2): number {
+    const hit = nearestRoad(this.roads, pos, 30);
+    return hit ? hit.angle : 0;
   }
 
   /** Force the character field to be recomputed, e.g. after toggling flow. */

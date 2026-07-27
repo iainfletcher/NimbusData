@@ -490,6 +490,8 @@ async function main(): Promise<void> {
   const sTimber = el('s-timber');
   const sStone = el('s-stone');
   const sFood = el('s-food');
+  const rWhen = el('r-when');
+  const rRival = el('r-rival');
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
@@ -508,6 +510,11 @@ async function main(): Promise<void> {
     sTimber.parentElement!.classList.toggle('low', rates.timber <= 0 && stocks.timber < 30);
     sStone.parentElement!.classList.toggle('low', rates.stone <= 0 && stocks.stone < 30);
     sFood.parentElement!.classList.toggle('low', rates.food < 0);
+
+    const season = world.calendar.season;
+    rWhen.textContent = `${season[0].toUpperCase()}${season.slice(1)}, year ${world.calendar.year}`;
+    rWhen.classList.toggle('winter', season === 'winter');
+    rRival.textContent = String(world.rivalBuilt);
 
     rCount.textContent = String(world.buildings.length);
     rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;

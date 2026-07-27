@@ -147,6 +147,15 @@
       }
       #readout .k { color: var(--muted); }
 
+      #townplate span + span {
+        margin-left: 14px;
+        padding-left: 14px;
+        border-left: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      #townplate .winter { color: #9fc2e0; }
+
       #townplate {
         top: 12px;
         left: 50%;
@@ -176,7 +185,10 @@
     </style>
   </head>
   <body>
-    <div id="townplate" class="panel"><span id="r-townname">—</span></div>
+    <div id="townplate" class="panel">
+      <span id="r-townname">—</span>
+      <span id="r-when">—</span>
+    </div>
 
     <div id="palette" class="panel">
       <h1>Place</h1>
@@ -235,6 +247,7 @@
         <div class="line"><span class="k">Town coherence</span><span id="r-town">—</span></div>
         <div class="line"><span class="k">Territory</span><span id="r-territory">—</span></div>
         <div class="line"><span class="k">Coh · output</span><span id="r-terrdetail">—</span></div>
+        <div class="line"><span class="k">Rival built</span><span id="r-rival">0</span></div>
         <div class="line"><span class="k">Render CPU</span><span id="r-render">—</span></div>
         <div class="line"><span class="k">Ticks</span><span id="r-ticks">0</span></div>
       </div>

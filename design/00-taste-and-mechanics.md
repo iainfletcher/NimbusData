@@ -317,6 +317,42 @@ crown. Fire, flood, a bad harvest.
 You are never punished for miscalculating a ratio. You are pressured by events you
 must *adapt* to. Adaptation is interesting; arithmetic is a chore.
 
+#### Built — the first two sources of pressure
+
+Both halves of that recommendation now exist, and they are deliberately the two
+that come from *outside* and from *time* rather than from a sum.
+
+**Time: a seasonal clock** (`src/sim/calendar.ts`). Four seasons of equal length,
+each a set of three multipliers — harvest, labour, appetite. Autumn is the reason
+a town survives; winter takes more than it gives, slows every quarry and sawmill
+to just over half, and makes everyone hungrier, *every year, whatever you do*. It
+is a cycle, never a gate: nothing stops to collect a decision, and there is no
+sum to get wrong. You either carried a surplus in or you did not.
+
+**Outside: a rival that grows** (`src/sim/rival.ts`). Until now the rival was a
+fixed jumble — it could lose ground but never take any, so neglecting your own
+town cost you nothing, and there is no game in that. It now builds on a timer,
+picks an anchor near contested ground, pushes *toward the frontier* so pressure
+arrives from a visible direction, and reinforces whatever character a place
+already has — so its quarters get more coherent over time and its culture reaches
+further for exactly the reason yours does (`04`).
+
+**It has no rubber band.** It does not build faster when it is losing. If you
+out-build it you stay ahead, and staying ahead is meant to be the reward rather
+than something the game keeps taking back.
+
+Measured over a run from the seeded test town: the rival went from 1663 to 2476
+cells of ground while the player went 4822 → 5203. Both grow; the player stays
+ahead by building faster. Stop building and that reverses, which is the whole
+point of putting it in.
+
+Two honest caveats. The rival still only *adds buildings* — it cannot take a
+building off you, so pressure is currently territorial only, and military
+pressure remains unbuilt. And the rates (build interval, food per household)
+were tuned against this container's ~3 ticks/sec, which is an artefact of
+software rendering rather than a real frame budget; they will need re-tuning on
+hardware with a GPU.
+
 ---
 
 ## Part 4 — The innovation core

@@ -59,8 +59,13 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - A light resource layer — timber, stone and food, all produced from what the
   surrounding land actually holds
 
-**Not yet built:** military pressure and combat; planned-fabric amplification
-(`design/05` §3); anything beyond the medieval era.
+- A seasonal clock — autumn is the harvest, winter takes more than it gives
+- A rival that actually grows, building toward the frontier and reinforcing its
+  own character, with no rubber band
+
+**Not yet built:** military pressure and combat — the rival can take ground but
+cannot take a building; planned-fabric amplification (`design/05` §3); anything
+beyond the medieval era.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.
