@@ -451,21 +451,21 @@ export class WorldView {
     const colour = CLOTHING[person.tint % CLOTHING.length];
 
     if (plan) {
-      g.circle(base.x, base.y, 1.1).fill(colour);
+      g.circle(base.x, base.y, 0.88).fill(colour);
       return;
     }
 
     // Deliberately out of scale. A correctly proportioned person is a two-pixel
     // sliver next to a house and reads as noise; toy cities want chunky figures,
     // as Theme Park and Settlers both understood.
-    const bob = Math.sin(this.elapsed * person.speed * 5.5 + person.phase) * 0.12;
-    const head = this.project(person.pos.x, person.pos.y, ground + 3.1 + bob);
-    const shoulder = this.project(person.pos.x, person.pos.y, ground + 2.4 + bob);
+    const bob = Math.sin(this.elapsed * person.speed * 5.5 + person.phase) * 0.1;
+    const head = this.project(person.pos.x, person.pos.y, ground + 2.48 + bob);
+    const shoulder = this.project(person.pos.x, person.pos.y, ground + 1.92 + bob);
 
     // A scrap of shadow, which is most of what roots a figure to the ground.
-    g.ellipse(base.x, base.y, 0.8, 0.4).fill({ color: 0x2f3a2c, alpha: 0.3 });
+    g.ellipse(base.x, base.y, 0.64, 0.32).fill({ color: 0x2f3a2c, alpha: 0.3 });
 
-    const halfW = 0.52;
+    const halfW = 0.42;
     g.poly([
       base.x - halfW * 0.8, base.y,
       base.x + halfW * 0.8, base.y,
@@ -473,7 +473,7 @@ export class WorldView {
       shoulder.x - halfW, shoulder.y,
     ]).fill(colour);
 
-    g.circle(head.x, head.y, 0.62).fill(SKIN);
+    g.circle(head.x, head.y, 0.5).fill(SKIN);
   }
 
   /** Small deterministic per-building variation, so a terrace isn't clones. */
