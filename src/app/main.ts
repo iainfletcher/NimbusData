@@ -101,6 +101,7 @@ async function main(): Promise<void> {
   const btnIso = el<HTMLButtonElement>('view-iso');
   const btnPlan = el<HTMLButtonElement>('view-plan');
   const btnOverlay = el<HTMLButtonElement>('toggle-overlay');
+  const btnStreets = el<HTMLButtonElement>('toggle-streets');
   const btnPause = el<HTMLButtonElement>('toggle-pause');
 
   function setView(mode: ViewMode): void {
@@ -123,11 +124,18 @@ async function main(): Promise<void> {
 
   btnIso.addEventListener('click', () => setView('iso'));
   btnPlan.addEventListener('click', () => setView('plan'));
+  function setStreets(on: boolean): void {
+    view.showStreets = on;
+    btnStreets.setAttribute('aria-pressed', String(on));
+  }
+
   btnOverlay.addEventListener('click', () => setOverlay(!view.showOverlay));
+  btnStreets.addEventListener('click', () => setStreets(!view.showStreets));
   btnPause.addEventListener('click', () => setPaused(!paused));
 
   el('seed-town').addEventListener('click', () => {
     seedTestTown(world);
+    world.rebuildFabric();
     view.markBuildingsDirty();
   });
 
@@ -197,6 +205,7 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') selectType(null);
     else if (e.key === 'c' || e.key === 'C') setOverlay(!view.showOverlay);
+    else if (e.key === 's' || e.key === 'S') setStreets(!view.showStreets);
     else if (e.key === 'v' || e.key === 'V') setView(view.viewMode === 'iso' ? 'plan' : 'iso');
     else if (e.code === 'Space') {
       e.preventDefault();
@@ -211,10 +220,12 @@ async function main(): Promise<void> {
   const rCoherence = el('r-coherence');
   const rBuilding = el('r-building');
   const rCount = el('r-count');
+  const rStreets = el('r-streets');
   const rTicks = el('r-ticks');
 
   function updateReadout(): void {
     rCount.textContent = String(world.buildings.length);
+    rStreets.textContent = String(world.fabric.paths.length);
     rTicks.textContent = String(world.ticks);
 
     if (!cursor) {

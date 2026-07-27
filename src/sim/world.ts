@@ -1,10 +1,17 @@
 import { CharacterField, COHERENCE_THRESHOLD } from './field';
 import { Terrain } from './terrain';
 import { buildingType } from './buildings';
+import { emptyFabric, generateFabric, orientToFabric, type Fabric } from './fabric';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
 const SETTLING_TICKS = 40;
+
+/**
+ * Routing the whole town costs a few hundred milliseconds, so it waits for the
+ * player to stop placing rather than running on every click.
+ */
+const FABRIC_DEBOUNCE_TICKS = 4;
 
 export interface PlacementResult {
   ok: boolean;
@@ -20,6 +27,11 @@ export class World {
   private nextId = 1;
   private fieldDirty = true;
   private tickCount = 0;
+
+  private _fabric: Fabric = emptyFabric();
+  private fabricDirty = false;
+  private fabricCooldown = 0;
+  private _fabricVersion = 0;
 
   constructor(readonly seed: number) {
     this.terrain = new Terrain(seed);
@@ -72,6 +84,7 @@ export class World {
     };
     this.buildings.push(building);
     this.fieldDirty = true;
+    this.markFabricDirty();
     return { ok: true, building };
   }
 
@@ -80,6 +93,7 @@ export class World {
     if (i < 0) return false;
     this.buildings.splice(i, 1);
     this.fieldDirty = true;
+    this.markFabricDirty();
     return true;
   }
 
@@ -98,6 +112,25 @@ export class World {
     return null;
   }
 
+  /** The street network. Regenerated shortly after buildings change. */
+  get fabric(): Fabric {
+    return this._fabric;
+  }
+
+  /** Bumped whenever the fabric is rebuilt, so renderers know to redraw. */
+  get fabricVersion(): number {
+    return this._fabricVersion;
+  }
+
+  /** Force an immediate rebuild rather than waiting out the debounce. */
+  rebuildFabric(): void {
+    this._fabric = generateFabric(this.terrain, this.buildings, this.seed);
+    orientToFabric(this.buildings, this._fabric);
+    this.fabricDirty = false;
+    this.fabricCooldown = 0;
+    this._fabricVersion++;
+  }
+
   tick(): void {
     this.tickCount++;
 
@@ -109,6 +142,16 @@ export class World {
     for (const b of this.buildings) b.age++;
 
     this.evolveHousing();
+
+    if (this.fabricDirty) {
+      if (this.fabricCooldown > 0) this.fabricCooldown--;
+      else this.rebuildFabric();
+    }
+  }
+
+  private markFabricDirty(): void {
+    this.fabricDirty = true;
+    this.fabricCooldown = FABRIC_DEBOUNCE_TICKS;
   }
 
   /**
@@ -138,7 +181,10 @@ export class World {
       changed = true;
     }
 
-    if (changed) this.fieldDirty = true;
+    if (changed) {
+      this.fieldDirty = true;
+      this.markFabricDirty();
+    }
   }
 
   private fitsInPlace(building: Building, width: number, depth: number): boolean {

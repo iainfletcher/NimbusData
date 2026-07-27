@@ -128,7 +128,57 @@ that made it strong). The modernisation dilemma gets teeth in both hands.
 
 ---
 
-## 6. Risks
+## 6. What the first implementation found
+
+Milestone 4 is built (`src/sim/fabric.ts`). Streets are generated as **desire
+lines**: every building routes to its nearest neighbours plus a spanning tree
+across the whole town, each journey is A*'d over a terrain cost field, and ground
+that carries more journeys is worn into a wider street. Hierarchy therefore falls
+out rather than being authored — the lane that happens to be on everyone's way to
+the market becomes the high street.
+
+Three findings, in order of importance:
+
+**1. It works at the between-places scale, immediately and well.** The road linking
+the working quarter to the market curves round the contours and reads as a genuine
+country road. This part needed no coaxing.
+
+**2. It fails on randomly scattered buildings, and the failure is instructive.**
+The first test town scattered buildings within a radius. The generator produced a
+network that looped *around* each cluster like field boundaries, because a route
+between two buildings on opposite sides of a scatter has no choice but to go round
+the ones in between. **Scattered buildings give a street nothing to run along.**
+
+**3. Laid out as rows along a spine — how anyone actually builds — it produces
+readable streets with frontages.** Same algorithm, no tuning. The market quarter
+now reads as a terrace.
+
+One change was needed to get there: ground near a building frontage is **cheaper to
+travel**, so routes gather into streets instead of striking out across open ground.
+Without that, journeys took the cheapest line across a field and ignored the town.
+
+### What this means for the pillar
+
+Organic fabric survives, with an important refinement: **the two scales want
+different treatment.**
+
+- **Between places** — desire lines, working now.
+- **Within a place** — the fabric can only be as linear as the placement is. The
+  generator faithfully reflects what the player did, which is exactly what `05`
+  asks of it, but it means a player who places loosely gets yards and blocks
+  rather than streets.
+
+That is arguably correct behaviour rather than a bug — loose placement *should*
+give a rambling settlement. But it makes an open question sharp: **should buildings
+settle onto frontages over time?** A small nudge toward the nearest street, applied
+as part of evolution, would let a loosely placed cluster tidy itself into a street
+over a few years. It's very much in the spirit of "you author it, it evolves" —
+but it edges against the rule in `00` that evolution must never override the plan.
+A few metres of settling is probably elaboration; anything more is relocation.
+
+Not decided. It's the most interesting open question the prototype has produced.
+
+## 7. Risks
 
 1. **Does planning become the min-maxer's obvious choice?** If so, the relaxed way
    to play becomes the losing way, which would be bad. Mitigation: planned fabric

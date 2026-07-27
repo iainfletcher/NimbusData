@@ -27,17 +27,21 @@ import a rendering library, touch the DOM, or call `Math.random`.
 
 ## Current state
 
-Milestones 0–3 and 5 of the MVP plan (`design/06` §4) are done:
+Milestones 0–3 and 5 are done, and 4 is partly done (`design/06` §4):
 
 - Terrain generation with a river, and placement rules that respect water and slope
 - The character field: emission, diffusion, dominant and coherence
 - Both projections — isometric world view and top-down plan — at matching scale
 - Housing evolving into the house that belongs where it stands
-- Place, remove, pan, zoom, pause, and a character overlay
+- Streets generated as desire lines, with width from how many journeys use them
+- Buildings turning to face the street they stand on
+- Place, remove, pan, zoom, pause, and overlays for character and streets
 
-**Not yet built:** organic fabric generation (milestone 4), which is the largest
-open risk in the design. Everything currently visible is buildings on bare ground —
-there are no streets.
+**Partly done:** street generation works well between places but within a cluster
+the fabric is only as linear as the placement — see `design/05` §6.
 
-Press **Seed test town** to lay down the arrangement the MVP is meant to be judged
-against, then **Character** to see the field.
+**Not yet built:** infill (yards, walls, back lanes), per-character architecture,
+ambient people.
+
+Press **Seed test town**, then **Character** to see the field and **Plan** to read
+the street layout.

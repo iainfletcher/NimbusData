@@ -5,6 +5,9 @@ import {
   CHARACTER_COUNT,
   buildingType,
   type Building,
+  type Fabric,
+  type StreetVertex,
+  type Vec2,
   type World,
 } from '../sim';
 import { Camera } from './camera';
@@ -17,11 +20,13 @@ const OVERLAY_STEP = 2;
 
 const NEUTRAL_BUILDING = 0x9c8f7d;
 const MUDDLE = 0x6a6a6a;
+const STREET = 0xa89878;
 
 export class WorldView {
   readonly root = new Container();
 
   private terrain = new Graphics();
+  private streets = new Graphics();
   private overlay = new Graphics();
   private buildings = new Graphics();
   private ghost = new Graphics();
@@ -31,8 +36,11 @@ export class WorldView {
 
   private buildingsDirty = true;
   private overlayDirty = true;
+  private streetsDirty = true;
+  private lastFabricVersion = -1;
 
   showOverlay = false;
+  showStreets = true;
 
   constructor(
     private world: World,
@@ -40,7 +48,7 @@ export class WorldView {
     private mode: ViewMode = 'iso',
   ) {
     this.projection = projectionFor(mode);
-    this.root.addChild(this.terrain, this.overlay, this.buildings, this.ghost);
+    this.root.addChild(this.terrain, this.streets, this.overlay, this.buildings, this.ghost);
   }
 
   get viewMode(): ViewMode {
@@ -67,6 +75,7 @@ export class WorldView {
     this.terrainCacheMode = null;
     this.buildingsDirty = true;
     this.overlayDirty = true;
+    this.streetsDirty = true;
 
     // Keep apparent scale constant across the switch, not just the centre point.
     this.camera.zoom *= previous.unitScale / this.projection.unitScale;
@@ -88,10 +97,26 @@ export class WorldView {
     return this.projection.project(wx, wy, h);
   }
 
+  private projectOnGround(p: Vec2): Point {
+    return this.project(p.x, p.y, this.world.terrain.heightAt(p.x, p.y));
+  }
+
   render(): void {
     if (this.terrainCacheMode !== this.mode) {
       this.drawTerrain();
       this.terrainCacheMode = this.mode;
+    }
+
+    if (this.world.fabricVersion !== this.lastFabricVersion) {
+      this.lastFabricVersion = this.world.fabricVersion;
+      this.streetsDirty = true;
+      // Frontages turn with the streets, so the buildings need redrawing too.
+      this.buildingsDirty = true;
+    }
+
+    if (this.streetsDirty) {
+      this.drawFabric();
+      this.streetsDirty = false;
     }
     if (this.overlayDirty) {
       this.drawOverlay();
@@ -103,6 +128,7 @@ export class WorldView {
     }
 
     this.overlay.visible = this.showOverlay;
+    this.streets.visible = this.showStreets;
 
     // Camera is a transform on the container, not a redraw.
     const { zoom, x, y, viewportWidth, viewportHeight } = this.camera;
@@ -148,6 +174,35 @@ export class WorldView {
     }
   }
 
+  /**
+   * Streets are drawn as ribbons: each path is offset to either side by its
+   * per-vertex half-width and closed into one polygon, so junctions and changes
+   * of width join cleanly instead of leaving gaps at the seams.
+   */
+  private drawFabric(): void {
+    const g = this.streets;
+    g.clear();
+
+    const fabric: Fabric = this.world.fabric;
+    for (const path of fabric.paths) {
+      if (path.length < 2) continue;
+
+      const { left, right } = offsetPath(path);
+      const points: number[] = [];
+
+      for (const p of left) {
+        const s = this.projectOnGround(p);
+        points.push(s.x, s.y);
+      }
+      for (let i = right.length - 1; i >= 0; i--) {
+        const s = this.projectOnGround(right[i]);
+        points.push(s.x, s.y);
+      }
+
+      g.poly(points).fill(STREET);
+    }
+  }
+
   private drawOverlay(): void {
     const g = this.overlay;
     g.clear();
@@ -167,22 +222,14 @@ export class WorldView {
         const wy = cy * CELL_SIZE;
 
         // Colour says what it is; washing toward grey says it doesn't know yet.
-        const clarity = Math.max(
-          0,
-          (reading.coherence - evenShare) / (1 - evenShare),
-        );
+        const clarity = Math.max(0, (reading.coherence - evenShare) / (1 - evenShare));
         const colour = mixColour(MUDDLE, CHARACTER_COLOURS[reading.dominant], clarity);
         const alpha = Math.min(0.72, 0.16 + reading.intensity * 0.42);
 
-        const h0 = t.heightAt(wx, wy);
-        const h1 = t.heightAt(wx + s, wy);
-        const h2 = t.heightAt(wx + s, wy + s);
-        const h3 = t.heightAt(wx, wy + s);
-
-        const p00 = this.project(wx, wy, h0);
-        const p10 = this.project(wx + s, wy, h1);
-        const p11 = this.project(wx + s, wy + s, h2);
-        const p01 = this.project(wx, wy + s, h3);
+        const p00 = this.project(wx, wy, t.heightAt(wx, wy));
+        const p10 = this.project(wx + s, wy, t.heightAt(wx + s, wy));
+        const p11 = this.project(wx + s, wy + s, t.heightAt(wx + s, wy + s));
+        const p01 = this.project(wx, wy + s, t.heightAt(wx, wy + s));
 
         g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
           color: colour,
@@ -203,51 +250,88 @@ export class WorldView {
     for (const b of sorted) this.drawBuilding(g, b, 1);
   }
 
+  /** The four ground corners, in world space, honouring the building's frontage. */
+  private footprint(b: Building): Vec2[] {
+    const type = buildingType(b.typeId);
+    const hw = type.width / 2;
+    const hd = type.depth / 2;
+    const cos = Math.cos(b.rotation);
+    const sin = Math.sin(b.rotation);
+
+    return [
+      [-hw, -hd],
+      [hw, -hd],
+      [hw, hd],
+      [-hw, hd],
+    ].map(([dx, dy]) => ({
+      x: b.pos.x + dx * cos - dy * sin,
+      y: b.pos.y + dx * sin + dy * cos,
+    }));
+  }
+
   private drawBuilding(g: Graphics, b: Building, alpha: number, tint?: number): void {
     const type = buildingType(b.typeId);
     const colour = tint ?? buildingColour(b.typeId);
     const h = this.world.terrain.heightAt(b.pos.x, b.pos.y);
-
-    const hw = type.width / 2;
-    const hd = type.depth / 2;
-    const x0 = b.pos.x - hw;
-    const x1 = b.pos.x + hw;
-    const y0 = b.pos.y - hd;
-    const y1 = b.pos.y + hd;
+    const corners = this.footprint(b);
 
     if (this.mode === 'plan') {
-      const a = this.project(x0, y0, h);
-      const c = this.project(x1, y1, h);
-      g.rect(a.x, a.y, c.x - a.x, c.y - a.y).fill({ color: colour, alpha });
+      const pts: number[] = [];
+      for (const c of corners) {
+        const s = this.project(c.x, c.y, h);
+        pts.push(s.x, s.y);
+      }
+      g.poly(pts).fill({ color: colour, alpha });
       return;
     }
 
-    // Isometric: a simple extruded box. Height stands in for storeys.
+    // Isometric: an extruded box. Height stands in for storeys.
     const storeys = type.family === 'civic' ? 9 : type.isEvolved ? 8 : 6;
     const top = h + storeys;
 
-    const t00 = this.project(x0, y0, top);
-    const t10 = this.project(x1, y0, top);
-    const t11 = this.project(x1, y1, top);
-    const t01 = this.project(x0, y1, top);
+    const base = corners.map((c) => this.project(c.x, c.y, h));
+    const roof = corners.map((c) => this.project(c.x, c.y, top));
 
-    const b10 = this.project(x1, y0, h);
-    const b11 = this.project(x1, y1, h);
-    const b01 = this.project(x0, y1, h);
+    // Any rotation is allowed, so sort the four walls back-to-front rather than
+    // assuming which two are visible.
+    const walls = [0, 1, 2, 3]
+      .map((i) => {
+        const j = (i + 1) % 4;
+        return {
+          i,
+          j,
+          depth: (corners[i].x + corners[i].y + corners[j].x + corners[j].y) / 2,
+        };
+      })
+      .sort((a, c) => a.depth - c.depth);
 
-    // Right face (towards +x), then front face (towards +y), then the roof.
-    g.poly([t10.x, t10.y, t11.x, t11.y, b11.x, b11.y, b10.x, b10.y]).fill({
-      color: shade(colour, -0.28),
-      alpha,
-    });
-    g.poly([t01.x, t01.y, t11.x, t11.y, b11.x, b11.y, b01.x, b01.y]).fill({
-      color: shade(colour, -0.14),
-      alpha,
-    });
-    g.poly([t00.x, t00.y, t10.x, t10.y, t11.x, t11.y, t01.x, t01.y]).fill({
-      color: shade(colour, 0.12),
-      alpha,
-    });
+    for (const w of walls) {
+      const facing = Math.abs(corners[w.j].x - corners[w.i].x);
+      const across = Math.abs(corners[w.j].y - corners[w.i].y);
+      // Walls more side-on to the light sit darker, which reads as a corner.
+      const lit = facing > across ? -0.14 : -0.28;
+      g.poly([
+        roof[w.i].x,
+        roof[w.i].y,
+        roof[w.j].x,
+        roof[w.j].y,
+        base[w.j].x,
+        base[w.j].y,
+        base[w.i].x,
+        base[w.i].y,
+      ]).fill({ color: shade(colour, lit), alpha });
+    }
+
+    g.poly([
+      roof[0].x,
+      roof[0].y,
+      roof[1].x,
+      roof[1].y,
+      roof[2].x,
+      roof[2].y,
+      roof[3].x,
+      roof[3].y,
+    ]).fill({ color: shade(colour, 0.12), alpha });
   }
 
   /** Placement preview. Pass null to clear. */
@@ -263,6 +347,34 @@ export class WorldView {
       valid ? 0x9ad6a0 : 0xd68a8a,
     );
   }
+}
+
+/** Offset a street centreline to both kerbs, mitring at each vertex. */
+function offsetPath(path: StreetVertex[]): { left: Vec2[]; right: Vec2[] } {
+  const left: Vec2[] = [];
+  const right: Vec2[] = [];
+
+  for (let i = 0; i < path.length; i++) {
+    const prev = path[Math.max(0, i - 1)];
+    const next = path[Math.min(path.length - 1, i + 1)];
+
+    let nx = -(next.y - prev.y);
+    let ny = next.x - prev.x;
+    const len = Math.hypot(nx, ny);
+    if (len < 1e-6) {
+      nx = 0;
+      ny = 1;
+    } else {
+      nx /= len;
+      ny /= len;
+    }
+
+    const w = path[i].halfWidth;
+    left.push({ x: path[i].x + nx * w, y: path[i].y + ny * w });
+    right.push({ x: path[i].x - nx * w, y: path[i].y - ny * w });
+  }
+
+  return { left, right };
 }
 
 function buildingColour(typeId: string): number {

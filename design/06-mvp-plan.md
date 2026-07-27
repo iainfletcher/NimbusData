@@ -164,13 +164,18 @@ authored street templates rather than procedural generation.
 | **1** | ✅ Place a building. It appears. Terrain blocks placement | Core interaction |
 | **2** | ✅ Character field: emit, diffuse, and **debug-visualise it** | The field maths |
 | **3** | ✅ Dominant + coherence computed and visualised per cell | `04`'s core |
-| **4** | ⬜ Organic fabric: streets and infill generate between buildings | **The big risk** |
+| **4** | ◐ Organic fabric: streets generate between buildings | **The big risk** — see `05` §6 |
 | **5** | ✅ Buildings evolve by dominant character, 2–3 steps | The chain's payoff |
 | **6** | ⬜ Visual character identity — palettes and idioms per character | Legibility |
 | **7** | ⬜ Ambient agents | Aliveness |
 
 Both projections were built up front rather than at milestone 6, since D3 chose
-both views and the plan view is the honest way to judge fabric later.
+both views and the plan view turned out to be essential for judging fabric.
+
+Milestone 4 is **partly** done: streets generate as desire lines and work well
+between places, but within a cluster the fabric is only as linear as the player's
+placement. Findings and the open question in `05` §6. Infill (yards, walls, back
+lanes) is not started.
 
 ### What the first build shows
 
