@@ -200,7 +200,57 @@ All of it works at a glance, with no numbers, and it's beautiful by construction
 
 ---
 
-## 8. First thing to prototype
+## 8. Built — what the first test actually showed
+
+Cultural pressure is implemented (`territory.ts`), spreading geodesically like the
+character field so it runs along roads and stops at ridges and water. Claim is
+integrated slowly toward the pressure balance, which is the stickiness §2 asks
+for. Military pressure is not built; this was the no-combat test §9 specifies.
+
+**The experiment.** Two towns of **47 buildings each**, same mix of types, on the
+same map. The player's is laid out along roads in coherent quarters; the rival's
+is the same buildings jumbled together with no road and no quarter. If culture
+came from size, they would draw.
+
+**First result — the thesis was much weaker than this document claimed:**
+
+| | Coherence | Cultural output | Territory |
+|---|---|---|---|
+| Ordered town | 78% | 18 | 3,125 |
+| Jumbled town | 66% | 15 | 2,718 |
+
+A fifth more output and a seventh more ground. This document says a muddled
+district "radiates almost nothing"; in practice it radiated **83%** of what the
+ordered one did.
+
+**Why, and it is worth knowing: it is genuinely hard to build an incoherent
+town.** Character concentrates locally almost whatever the layout — the more so
+with geodesic spread, which channels rather than blends — so nearly everything
+clears the coherence threshold. Even deliberate jumbling only cost 12 points.
+**Coherence is a much weaker discriminator than §2 assumes.**
+
+**Making it decisive required tuning, not more simulation.** Applying coherence
+*steeply* rather than linearly:
+
+| Response | Territory | Verdict |
+|---|---|---|
+| Linear | 3,125 v 2,718 | Too weak to read as a mechanic |
+| Squared | 2,014 v 322 | A rout — and it shrank everyone's reach so far the map went unclaimed |
+| **Power 1.6, reach rebalanced** | **5,105 v 2,240** | Clear advantage, loser still on the map |
+
+**Verdict: the pillar holds, with an important caveat.** A well-ordered town does
+push its border into a matched jumble, with no combat, and it is legible on the
+map. But the effect is **tuned into existence rather than emergent** — the
+response curve is doing the work, not the simulation. That is a legitimate design
+decision, and it should be recorded as one rather than presented as something the
+model produced on its own.
+
+**What this implies for the design.** If coherence alone barely separates towns,
+it probably should not carry the whole load. Age (§Antique), size, and amenity
+mix are all candidates to share it, and would each be more robust than a
+quantity that saturates as easily as this one does.
+
+## 9. First thing to prototype
 
 The smallest build that tests the core claim: **one map, two settlements, both
 fields, no combat at all.**

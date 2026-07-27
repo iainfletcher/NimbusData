@@ -12,4 +12,6 @@ export * from './roads';
 export * from './fabric';
 export * from './decor';
 export * from './people';
+export * from './flood';
+export * from './territory';
 export * from './world';

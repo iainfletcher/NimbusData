@@ -1,4 +1,4 @@
-import { World, WORLD_SIZE, buildingType, makeRng, type Vec2 } from '../sim';
+import { OWNER_RIVAL, World, WORLD_SIZE, buildingType, makeRng, type Vec2 } from '../sim';
 
 /**
  * Lays down the arrangement the MVP is judged against (design/06 §3), the way a
@@ -100,6 +100,87 @@ export function seedTestTown(world: World): void {
  * half-width plus a setback, turned to face it. Rank 1 sits behind the frontage,
  * which is where a back lane will end up being worn.
  */
+/**
+ * A rival settlement, so there is something for the border to press against.
+ *
+ * Deliberately built the *wrong* way: everything jumbled together with no road
+ * and no coherent quarter. That is the experiment in `design/01` — if culture
+ * really does come from strength of character rather than from size, a muddled
+ * town of comparable population should lose ground to a well-ordered one
+ * without a shot being fired.
+ */
+export function seedRivalTown(world: World): void {
+  const rng = makeRng(world.seed ^ 0x21fa);
+  const at = findRivalSite(world);
+  if (!at) return;
+
+  // Matched to the player town in size and in the mix of buildings, so the only
+  // difference between them is *arrangement*. That is the whole experiment: if
+  // culture came from size, these two would draw.
+  const kinds = [
+    'market', 'foundry', 'church', 'tavern', 'workshop', 'warehouse',
+    'tannery', 'chapel', 'alehouse', 'sawmill', 'guildhall', 'almshouse',
+    'green', 'orchard', 'farm', 'watermill', 'workshop', 'warehouse',
+  ];
+
+  kinds.forEach((typeId, i) => {
+    const angle = (i / kinds.length) * Math.PI * 2 + rng();
+    const dist = 25 + rng() * 95;
+    scatter(world, typeId, at, angle, dist, rng);
+  });
+
+  for (let i = 0; i < 29; i++) {
+    scatter(world, 'cottage', at, rng() * Math.PI * 2, 20 + rng() * 125, rng);
+  }
+}
+
+/**
+ * Find somewhere the rival can actually stand: far enough from the player to
+ * leave a frontier between them, on ground that is neither sea nor scarp.
+ * Hardcoding a position put the first attempt in the estuary.
+ */
+function findRivalSite(world: World): Vec2 | null {
+  const c = WORLD_SIZE / 2;
+  const home = { x: c, y: c + 60 };
+
+  for (const distance of [430, 380, 330, 480]) {
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      const at = {
+        x: home.x + Math.cos(angle) * distance,
+        y: home.y + Math.sin(angle) * distance,
+      };
+      if (at.x < 90 || at.y < 90 || at.x > WORLD_SIZE - 90 || at.y > WORLD_SIZE - 90) continue;
+
+      // Needs a usable patch, not just one buildable point.
+      let clear = 0;
+      for (let s = 0; s < 12; s++) {
+        const a = (s / 12) * Math.PI * 2;
+        const p = { x: at.x + Math.cos(a) * 55, y: at.y + Math.sin(a) * 55 };
+        if (world.terrain.isBuildable(p, 14, 12)) clear++;
+      }
+      if (clear >= 9) return at;
+    }
+  }
+  return null;
+}
+
+function scatter(
+  world: World,
+  typeId: string,
+  centre: Vec2,
+  angle: number,
+  dist: number,
+  rng: () => number,
+): void {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const a = angle + (rng() - 0.5) * 0.9;
+    const d = dist + (rng() - 0.5) * attempt * 4;
+    const pos = { x: centre.x + Math.cos(a) * d, y: centre.y + Math.sin(a) * d };
+    if (world.place(typeId, pos, rng() * Math.PI * 2, OWNER_RIVAL).ok) return;
+  }
+}
+
 function frontage(
   world: World,
   typeId: string,

@@ -13,7 +13,7 @@ import { Camera } from '../render/camera';
 import { CHARACTER_COLOURS, CHARACTER_LABELS } from '../render/palette';
 import { WorldView } from '../render/worldView';
 import type { ViewMode } from '../render/projection';
-import { seedTestTown } from './testTown';
+import { seedRivalTown, seedTestTown } from './testTown';
 
 const SIM_TICK_MS = 100;
 
@@ -229,6 +229,12 @@ async function main(): Promise<void> {
     btnFlow.setAttribute('aria-pressed', String(world.useFlow));
   });
 
+  const btnBorders = el<HTMLButtonElement>('toggle-borders');
+  btnBorders.addEventListener('click', () => {
+    view.showBorders = !view.showBorders;
+    btnBorders.setAttribute('aria-pressed', String(view.showBorders));
+  });
+
   const btnPave = el<HTMLButtonElement>('tool-pave');
   btnPave.setAttribute('aria-pressed', 'false');
   btnPave.addEventListener('click', () => setPaving(!paving));
@@ -285,6 +291,7 @@ async function main(): Promise<void> {
 
   el('seed-town').addEventListener('click', () => {
     seedTestTown(world);
+    seedRivalTown(world);
     world.rebuildFabric();
     view.markBuildingsDirty();
   });
@@ -421,6 +428,8 @@ async function main(): Promise<void> {
   const rPeople = el('r-people');
   const rTown = el('r-town');
   const rRender = el('r-render');
+  const rTerritory = el('r-territory');
+  const rTerrDetail = el('r-terrdetail');
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
@@ -441,6 +450,12 @@ async function main(): Promise<void> {
       townEvery = now;
       const stats = world.field.townCoherence();
       rRender.textContent = `${renderMs.toFixed(2)} ms`;
+      const terr = world.territory.stats(world.buildings, world.field);
+      const pct = (v: number) => Math.round(v * 100);
+      rTerritory.textContent = `${terr.cells[0]} v ${terr.cells[1]}`;
+      rTerrDetail.textContent =
+        `coh ${pct(terr.coherence[0])}/${pct(terr.coherence[1])} · ` +
+        `out ${terr.output[0].toFixed(0)}/${terr.output[1].toFixed(0)}`;
       rTown.textContent = stats.cells
         ? `${Math.round(stats.mean * 100)}% over ${stats.cells}`
         : '—';

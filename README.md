@@ -53,8 +53,10 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Paving a worn path into a road, keeping its wander
 - Market stalls, open-field strips, livestock
 
-**Not yet built:** territory and the cultural pressure field (`design/01`);
-anything beyond the medieval era; the economy.
+- Cultural pressure and a living border between rival settlements
+
+**Not yet built:** planned fabric — crescents, squares, grids (`design/05`);
+military pressure and combat; anything beyond the medieval era; the economy.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

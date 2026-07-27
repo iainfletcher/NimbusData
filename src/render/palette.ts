@@ -67,3 +67,11 @@ export function waterColour(depth: number): number {
   const t = Math.min(1, Math.max(0, depth / 5));
   return mix(TERRAIN.shallowWater, TERRAIN.deepWater, t);
 }
+
+/**
+ * Territory. The player reads warm, the rival cool — the two are meant to be
+ * told apart at a glance from a long way out, so they sit at opposite ends of
+ * the temperature range rather than merely being different hues.
+ */
+export const TERRITORY_COLOURS = [0xe0a23c, 0x6f8fd0];
+export const FRONTIER_COLOUR = 0xfaf0d8;

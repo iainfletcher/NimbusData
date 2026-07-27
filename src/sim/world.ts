@@ -6,6 +6,7 @@ import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type Roa
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
+import { OWNER_PLAYER, Territory } from './territory';
 import { makeNameRng, streetName, townName } from './names';
 import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
@@ -22,6 +23,12 @@ const FABRIC_DEBOUNCE_TICKS = 4;
 
 /** Ticks of quiet after a brush stroke before the water is recomputed. */
 const WATER_SETTLE_TICKS = 3;
+
+/**
+ * Ticks between territory recomputations. Culture moves on a scale of years, so
+ * there is nothing to gain from resolving it every tenth of a second.
+ */
+const TERRITORY_INTERVAL = 12;
 
 export interface PlacementResult {
   ok: boolean;
@@ -48,6 +55,8 @@ export class World {
   private _decor: Decor = emptyDecor();
   readonly crowd = new Crowd();
   private conductance: Conductance = openGround();
+  readonly territory = new Territory();
+  private territoryCooldown = 0;
   /**
    * When false the character field falls back to flat cost, which makes geodesic
    * spread equivalent to Euclidean. Kept as a live A/B so the effect of the cost
@@ -147,13 +156,19 @@ export class World {
     return { ok: true };
   }
 
-  place(typeId: string, pos: Vec2, rotation = 0): PlacementResult {
+  place(
+    typeId: string,
+    pos: Vec2,
+    rotation = 0,
+    owner: number = OWNER_PLAYER,
+  ): PlacementResult {
     const check = this.canPlace(typeId, pos);
     if (!check.ok) return check;
 
     const building: Building = {
       id: this.nextId++,
       typeId,
+      owner,
       pos: { x: pos.x, y: pos.y },
       rotation,
       age: 0,
@@ -326,6 +341,20 @@ export class World {
     if (this.fabricDirty) {
       if (this.fabricCooldown > 0) this.fabricCooldown--;
       else this.rebuildFabric();
+    }
+
+    // Culture is slow by design, so it is recomputed on a lazy cadence and the
+    // claim is then allowed to drift by however many ticks have passed.
+    if (this.territoryCooldown > 0) {
+      this.territoryCooldown--;
+    } else {
+      this.territoryCooldown = TERRITORY_INTERVAL;
+      this.territory.update(
+        this.buildings,
+        this.field,
+        this.useFlow ? this.conductance : openGround(),
+        TERRITORY_INTERVAL,
+      );
     }
 
     // Water settles a beat after the last brush stroke, then everything that

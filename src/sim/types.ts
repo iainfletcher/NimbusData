@@ -61,6 +61,8 @@ export interface BuildingType {
 export interface Building {
   id: number;
   typeId: string;
+  /** Which settlement this belongs to. 0 is the player. */
+  owner: number;
   pos: Vec2;
   /** Radians, quantised by placement to keep frontages tidy. */
   rotation: number;

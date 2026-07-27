@@ -21,7 +21,7 @@ import { Camera } from './camera';
 import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
 import { deriveFacade, type Panel } from './grammar';
 import { drawDecorItem, type DecorContext } from './decor';
-import { CHARACTER_COLOURS, shade, terrainColour, waterColour } from './palette';
+import { CHARACTER_COLOURS, FRONTIER_COLOUR, TERRITORY_COLOURS, shade, terrainColour, waterColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
 
 /** Terrain is drawn every Nth cell — 4m cells are finer than the eye needs here. */
@@ -53,6 +53,7 @@ export class WorldView {
   private streets = new Graphics();
   private roads = new Graphics();
   private overlay = new Graphics();
+  private border = new Graphics();
   /**
    * Buildings, decor and people all have to sort against each other, but the
    * first two are static and the third moves every frame. Redrawing thousands of
@@ -79,6 +80,8 @@ export class WorldView {
 
   showOverlay = false;
   showStreets = true;
+  showBorders = false;
+  private borderVersion = -1;
 
   constructor(
     private world: World,
@@ -89,7 +92,14 @@ export class WorldView {
     // Worn paths first, then made roads over them: a road is the more definite
     // thing and should visibly cut across the tracks that predate it.
     // Shadows lie on the ground, over roads and paths, under everything upright.
-    this.root.addChild(this.terrain, this.streets, this.roads, this.shadows, this.overlay);
+    this.root.addChild(
+      this.terrain,
+      this.streets,
+      this.roads,
+      this.shadows,
+      this.border,
+      this.overlay,
+    );
 
     for (let i = 0; i < DEPTH_BANDS; i++) {
       const statics = new Graphics();
@@ -190,9 +200,18 @@ export class WorldView {
       this.buildingsDirty = false;
     }
 
+    // The claim drifts continuously, so the border is redrawn on a cadence
+    // rather than only when something is built.
+    const borderTick = this.world.ticks >> 3;
+    if (this.showBorders && borderTick !== this.borderVersion) {
+      this.borderVersion = borderTick;
+      this.drawBorders();
+    }
+
     this.drawPeople();
 
     this.shadows.visible = this.mode === 'iso';
+    this.border.visible = this.showBorders;
     this.overlay.visible = this.showOverlay;
     this.streets.visible = this.showStreets;
     this.roads.visible = this.showStreets;
@@ -562,6 +581,59 @@ export class WorldView {
       const p = this.projectOnGround(b.pos);
       const r = Math.max(type.width, type.depth) * 0.62;
       g.ellipse(p.x, p.y, r, r * 0.5).fill({ color: SHADOW_COLOUR, alpha: 0.22 });
+    }
+  }
+
+  /**
+   * The border, drawn as two things at once (design/01 §6): a soft wash of
+   * whoever holds the ground, and a bright line where the two meet.
+   *
+   * The wash is what makes the claim readable as *pressure* — it fades out
+   * rather than stopping, so you can see a town's reach as well as its edge.
+   * The line is what makes the frontier a thing you can watch move.
+   */
+  private drawBorders(): void {
+    const g = this.border;
+    g.clear();
+
+    const territory = this.world.territory;
+    const t = this.world.terrain;
+    const step = 2;
+    const s = CELL_SIZE * step;
+
+    for (let cy = 0; cy < territory.height; cy += step) {
+      for (let cx = 0; cx < territory.width; cx += step) {
+        const claim = territory.claim[cy * territory.width + cx];
+        const strength = Math.abs(claim);
+        if (strength < 0.06) continue;
+
+        const owner = claim > 0 ? 0 : 1;
+        const wx = cx * CELL_SIZE;
+        const wy = cy * CELL_SIZE;
+
+        const p00 = this.project(wx, wy, t.heightAtCell(cx, cy));
+        const p10 = this.project(wx + s, wy, t.heightAtCell(cx + step, cy));
+        const p11 = this.project(wx + s, wy + s, t.heightAtCell(cx + step, cy + step));
+        const p01 = this.project(wx, wy + s, t.heightAtCell(cx, cy + step));
+
+        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
+          color: TERRITORY_COLOURS[owner],
+          alpha: Math.min(0.42, 0.06 + strength * 0.4),
+        });
+
+        // Where the sign flips between neighbours, that is the frontier.
+        const east = territory.ownerAtCell(cx + step, cy);
+        const south = territory.ownerAtCell(cx, cy + step);
+        const here = territory.ownerAtCell(cx, cy);
+        if (here === null) continue;
+
+        if ((east !== null && east !== here) || (south !== null && south !== here)) {
+          g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
+            color: FRONTIER_COLOUR,
+            alpha: 0.5,
+          });
+        }
+      }
     }
   }
 
@@ -1098,7 +1170,7 @@ export class WorldView {
 
     this.drawBuilding(
       g,
-      { id: -1, typeId, pos, rotation, age: 0 },
+      { id: -1, typeId, owner: 0, pos, rotation, age: 0 },
       0.55,
       valid ? 0x9ad6a0 : 0xd68a8a,
     );
