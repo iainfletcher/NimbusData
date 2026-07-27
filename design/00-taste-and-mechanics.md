@@ -1,7 +1,20 @@
 # Design Exploration 01 — Taste Profile & Mechanic Space
 
-Status: thinking document. Nothing here is committed to. The goal is to find where
-the ideal sits by laying out each axis honestly and picking a favourite.
+Status: thinking document, partially resolved. Axes are laid out honestly with a
+recommendation; decisions taken so far are recorded below.
+
+## Decisions taken
+
+1. **Authorship — you place everything, the town evolves it.** Not zoning, not
+   accretion. The player composes; time weathers, densifies and elaborates. See
+   Axis 1 (Option D) and Pillar B.
+2. **Time — real-time with pause.** No seasonal turn gate. Seasons survive as
+   cycle and flavour, not as decision boundaries. See Axis 6.
+3. **Territory — dual pressure: military *and* cultural.** This is now the core
+   idea of the game, not a sub-system of combat. Deep dive in
+   `01-territory-and-pressure.md`. See Axis 4.
+4. **UI — no-numbers is an open experiment, not a commitment.** Build visual-only
+   first, admit numbers only where it demonstrably breaks. See Pillar A.
 
 ---
 
@@ -102,22 +115,37 @@ Each axis gives the realistic options, the trade, and a recommendation.
 |---|---|---|
 | A. Place everything (Settlers) | Total authorship, satisfying | No emergence, no surprise; large cities become tedious placement |
 | B. Zone everything (SimCity) | Pure gardening, great surprise | Weak spatial decisions, and zoning UI is itself a chore |
-| C. **Split vocabulary** | Author the skeleton, watch the flesh | Less control over final look |
+| C. Split vocabulary | Author the skeleton, watch the flesh | Less control over the final look |
+| D. **Author it, it evolves** ✅ | You compose; time elaborates | Needs strict rules so evolution doesn't undermine authorship |
 
-**Recommendation: C.** You place the things with *intent* — production, civic,
-infrastructure, military. Housing, shops, and small streets **grow themselves**
-around them.
+**DECIDED: D.** The player places **every** building, housing included. The town
+then changes what you placed, over time, without asking:
 
-The mechanism: **homes follow jobs.** Place a sawmill at the treeline and a hamlet
-accretes around it. Place a smelter across the valley and a second cluster forms.
-You never paint a zone; you place a reason for people to be somewhere, and they
-come.
+- **Ageing.** Buildings acquire patina, patching, character. A place looks its age.
+- **Densification.** A well-sited cottage becomes a townhouse, then a terrace, as
+  the area thrives. You didn't request it; conditions caused it.
+- **Decay.** A badly-sited building degrades — grimy, shuttered, eventually a slum.
+- **Renewal.** The town replaces derelict buildings on its own, sometimes with
+  something different from what stood there.
+- **Infill.** Side streets, yards, sheds, walls and alleys appear *between* your
+  placed buildings — connective tissue you never drew.
 
-This is worth dwelling on because it does two jobs at once. It's the SimCity
-surprise engine, *and* it makes the settlement's shape a readout of your economic
-decisions. **Looking at the town tells you what your economy is.** A lopsided town
-means a lopsided economy. That's diagnosis-by-eyeball, which is Part 2's thesis
-made concrete.
+The feel: **you are an architect, and time is your collaborator.** At hour five the
+town is recognisably your composition — weathered, denser, and textured in ways you
+didn't author.
+
+**The rule that protects authorship:** *evolution elaborates the plan and never
+overrides it.* Nothing you placed is deleted, moved, or repurposed against your
+intent. The town develops your work; it does not edit it. Break this rule and the
+whole feel collapses into frustration.
+
+**The important consequence — building evolution is the scoring system, and it is
+visible.** Since you now place housing yourself, siting has to *matter*: proximity
+to work, to amenity, to noise, to a view. Good siting visibly flourishes; poor
+siting visibly rots. So the town **shows you where you placed well** without a
+single number, and a mature town is a legible record of your judgement. This
+replaces the readout that Option C would have given, and arguably beats it — it
+grades your decisions rather than merely reflecting them.
 
 ### Axis 2 — How do goods move?
 
@@ -190,9 +218,12 @@ sharing a map badly.
 |---|---|---|
 | A. Settlers garrisons | Spatial, slow, thematic | Combat resolution is mush |
 | B. Polytopia units | Clean, tactical | Turn-based; unit micro creeps upward |
-| C. **Pressure field + few named warbands** | Spatial *and* decisive | Novel, needs tuning |
+| C. Pressure field + few named warbands | Spatial *and* decisive | Novel, needs tuning |
+| D. **C, with cultural pressure alongside military** ✅ | Two ways to own land | The most novel thing here; needs the two fields to behave differently |
 
-**Recommendation: C.**
+**DECIDED: D.** This turned out to be the centre of the game rather than a combat
+sub-system, so it has its own document: **`01-territory-and-pressure.md`**. Summary
+here.
 
 **Territory as a pressure field.** Territory is continuous, not tile-claimed. Every
 military building projects pressure outward, decaying with distance. **The border
@@ -200,6 +231,14 @@ sits where opposing pressures balance.** Build forward and the contour bulges.
 Lose a tower and it recedes. You expand by *building*, exactly like Settlers, but
 the border is a smooth living contour rather than a stack of claimed hexes — a map
 that visibly breathes.
+
+**Two fields, not one.** Military pressure is *built*; cultural pressure is
+*earned* by the town being good to live in. They behave nothing alike — military is
+fast, hard-edged and collapses the moment the tower falls; cultural is slow, soft
+and sticky, and lingers long after. **Military pressure takes land; cultural
+pressure converts it.** The consequence is that the way you defend your border is
+by building a nice town — which welds the city sim to the 4X layer instead of
+bolting them together. Full treatment in `01`.
 
 **War as a handful of named warbands.** You never command individual soldiers. You
 raise a *warband*: one controllable unit with a strength, a banner, and a name.
@@ -243,23 +282,28 @@ to "more developed than Polytopia" *without* being "more systems."
 
 ### Axis 6 — Time model
 
-Polytopia's punch is turn-based. Settlers/SimCity/Theme Park's charm is real-time
-watching. These seem opposed. They aren't necessarily.
+**DECIDED: real-time with generous pause.** Seasonal turn-gating is rejected —
+the living, watchable economy is the point, and a boundary that stops the world
+to collect decisions works against it. Pause is the decision beat, and the player
+owns when it happens. Speed controls (pause / 1× / 2× / 3×) throughout.
 
-**Recommendation to consider seriously: seasonal cadence.**
+**Seasons survive as cycle, not as gate.** Winter still raises food demand and
+slows building; harvest still arrives. You get the rhythm and the flavour without
+the world ever stopping to ask you something.
 
-Real-time within a season — the economy runs, carriers walk, the town grows, you
-watch and tweak. Then a **season boundary**: a decision beat where you commit build
-orders, declare war, set policy, respond to events.
+Two consequences that need designing around:
 
-This gets you:
-- Real-time's living, watchable economy.
-- Turn-based's punchy, considered decisions.
-- Natural pacing and a "one more season" hook.
-- A clean place to hang events, migrations, and the town's story.
+**1. Where do the decision beats come from?** Turn boundaries would have supplied
+them free. Instead they come from *events arriving as interruptions* — a bad
+harvest, a migration wave, a rival's tower going up on your line. The game
+requests your attention rather than scheduling it. Pausing on an event should feel
+natural, not obligatory.
 
-The alternative — pure real-time with generous pause — is safer and more
-conventional. Seasonal is the more interesting bet.
+**2. Real-time plus self-throttling production risks feeling idle.** With no jams
+and no ratios, there's a real danger of "nothing needs doing." The answer is that
+the *border* is the continuous pressure source: the cultural field drifts all the
+time, so the edges of your world are always in motion even when the middle is
+calm. See `01`. This is a genuine risk to watch in the first prototype.
 
 ### Axis 7 — Where does pressure come from?
 
@@ -295,23 +339,41 @@ You diagnose your city **by looking at it**. **The map is the dashboard.**
 
 This is a radical constraint and it's the most direct possible expression of the
 Part 2 thesis. It also forces the game to be beautiful, because beauty and
-readability become the same engineering problem. It will fight combat resolution
-and economy tuning — that tension is real and is the main thing to pressure-test.
+readability become the same engineering problem.
 
-### Pillar B — Growth as accretion
+**Held as an experiment, not a commitment.** Build the visual-only version first
+and find out empirically where it breaks. Expected pressure points: warband
+engagement odds, and the two pressure fields at a contested border. If numbers
+have to be admitted, admit them *there* and nowhere else, and treat each one as a
+design failure to be re-attacked later rather than a normal UI element.
 
-No zoning, no manual housing. The town's shape emerges around what you place. The
-settlement is a **portrait of your decisions**. Combined with Pillar A, the town's
-silhouette is simultaneously the art, the feedback, and the score.
+### Pillar B — Evolution, not accretion
 
-### Pillar C — Seasonal cadence
+You place every building; the town ages, densifies, decays, renews and infills
+around your work without ever overriding it. (Axis 1, Option D.)
 
-Watch in real time, decide in beats. (Axis 6.)
+The payoff is that **the town becomes a visible record of your judgement** —
+flourishing where you sited well, rotting where you didn't — so Pillar A gets its
+most important feedback channel for free. Combined, the town's silhouette is
+simultaneously the art, the feedback, and the score.
 
-### Pillar D — Territory as pressure, war as supply
+### Pillar C — Continuous world, player-owned beats
 
-Combat that operates on the same objects as peace, and is paced by the same
-economy. (Axis 4.)
+Real-time with pause; seasons as cycle and flavour, never as a gate. Events arrive
+as interruptions and the player chooses when to stop the world. (Axis 6.)
+
+### Pillar D — Dual pressure: you can win land by being good at living
+
+**Promoted to the lead pillar.** Borders are contested by military pressure *and*
+cultural pressure, which behave nothing alike. Military takes; culture keeps. The
+result is that **playing the city-building game well is itself the territorial
+game** — a prosperous, beautiful, well-sited town pushes its borders outward on
+its own, and a grim garrison town loses ground to a nicer neighbour even in
+peacetime.
+
+This is the answer to the oldest problem in city-sims-with-combat: the two halves
+stop competing for attention because they are the same activity. Full treatment in
+`01-territory-and-pressure.md`.
 
 ### Pillar E — The city remembers
 
@@ -336,13 +398,13 @@ tune rather than a pillar to commit to — full autonomy would undercut authorsh
 
 ## Part 5 — Open tensions, honestly
 
-1. **"No numbers" vs. combat.** Warband engagements need *some* legible strength
-   comparison. How far does the constraint bend? (Posture, banner size, and visible
-   veterancy might carry it — worth prototyping before deciding.)
-2. **Emergent growth vs. the pleasure of arranging.** Pillar B removes the ability
-   to lovingly place a house. If "building little toy cities" means the pleasure of
-   *arranging*, Pillar B is fighting the core fantasy rather than serving it. **This
-   is the biggest unresolved question in the document.**
+1. **"No numbers" vs. combat and contested borders.** Warband engagements and
+   two overlapping pressure fields both want a legible comparison. Deliberately
+   left open to prototype (Pillar A).
+2. ~~Emergent growth vs. the pleasure of arranging.~~ **Resolved:** authorship
+   wins, evolution elaborates. The successor risk is the inverse — *does evolution
+   ever feel like the town disobeying you?* The "never override the plan" rule
+   exists to prevent this, and it needs testing with a real player, not reasoning.
 3. **Small population vs. ambition.** Hundreds of citizens keeps it a toy and keeps
    agent simulation cheap, but caps the "watch a metropolis rise" fantasy. Probably
    correct to accept, but it is a real trade.
@@ -350,19 +412,32 @@ tune rather than a pillar to commit to — full autonomy would undercut authorsh
    challenge?** If nothing can ever be *wrong*, is the economy still a game? The
    answer is probably that the challenge relocates to *placement* and *timing*
    rather than *proportion* — but that needs to be verified, not assumed.
+5. **Real-time idle risk.** No jams, no ratios, no turn beats. If the border
+   doesn't supply enough continuous motion, the mid-game could go slack. First
+   thing to measure in a playable build.
+6. **Does densification fight the toy scale?** Pillar B's densification pushes
+   towards bigger, denser settlements while the "little toy city" fantasy wants
+   small. Densification may need a low ceiling — cottage → townhouse → terrace and
+   stop, never tower blocks.
 
 ---
 
 ## Part 6 — What the game is, in one paragraph
 
-> You found a settlement. You place the reasons for people to be somewhere — a
-> sawmill by the treeline, a smelter by the ore — and homes, shops and streets
-> accrete around them, so the shape of your town is a portrait of your economy.
-> Goods visibly walk between buildings, but nothing ever jams and there is no ratio
-> to compute; you make placement decisions, and you read the results by looking at
-> the town rather than at a panel. Seasons pass in real time and turn on a decision
-> beat. Your borders are a living contour pushed outward by what you build, and war
-> is a few named warbands tethered to how far your economy can actually reach —
-> when you take a town, you inherit it working and sullen rather than razed. Over
-> many seasons the place accumulates a history: aged buildings, named citizens,
+> You found a settlement and you place every building in it yourself — the sawmill
+> by the treeline, the smelter by the ore, each cottage where you want it. Then
+> time gets to work on your composition: buildings weather and patch, well-sited
+> ones grow into townhouses, badly-sited ones sag into slums, and alleys and yards
+> fill in between the things you drew. Goods visibly walk from building to
+> building, but nothing ever jams and there is no ratio to compute, so you read
+> your town by looking at it rather than at a panel — and a mature town is a
+> visible record of how well you judged it. Your borders are a living contour, and
+> they are pushed by two different things: towers, which seize ground fast and
+> lose it fast, and the sheer quality of your town, which converts ground slowly
+> and holds it long after the soldiers leave. So a nice place quietly grows and a
+> grim one quietly shrinks, and the way to defend a frontier is to make the
+> frontier somewhere people want to live. War is a few named warbands tethered to
+> how far your economy actually reaches; take a town and you inherit it working
+> and sullen, and winning it over is a city-building problem, not a military one.
+> Years pass and the place accumulates a history — aged buildings, named citizens,
 > districts that remember what happened to them.

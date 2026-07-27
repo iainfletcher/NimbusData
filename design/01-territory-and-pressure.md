@@ -1,0 +1,211 @@
+# Design Exploration 02 — Territory, Culture and War
+
+The core idea of the game. Territory is a continuous field contested by **two
+pressures that behave nothing alike**: military, which is *built*, and cultural,
+which is *earned*.
+
+The one-line version:
+
+> **Military pressure takes land. Cultural pressure converts it.
+> So the way you defend a border is by building a town people want to live in.**
+
+---
+
+## 1. Why this is the centre and not a sub-system
+
+City-sims with combat almost always fail the same way: the building game and the
+war game compete for the player's attention and share nothing but a map. You stop
+tending your city to go fight, then come back to a city that got worse while you
+were away. Two games in a trenchcoat.
+
+Dual pressure dissolves this. **Playing the city-building game well *is* the
+territorial game.** A prosperous, beautiful, well-sited town pushes its own borders
+outward with no orders from you. A grim garrison town loses ground to a nicer
+neighbour in peacetime. Every hour spent on the city is also an hour spent on the
+map, and vice versa. Nothing has to be abandoned to do the other thing.
+
+That's also why it earns being the lead pillar: it's the mechanic that makes this
+game *one game*.
+
+---
+
+## 2. The two fields
+
+Territory is continuous — a field over the map, not a set of claimed tiles. Borders
+sit where opposing pressure balances, so they are smooth living contours that
+breathe rather than a stack of hexes flipping colour.
+
+| | **Military** | **Cultural** |
+|---|---|---|
+| Source | Towers, keeps, garrisons — discrete points | The whole town — a distributed emission |
+| How you get it | **Built.** Place a tower, done | **Earned.** A byproduct of the town being good |
+| Onset | Immediate on completion | Slow — accumulates over a long time |
+| Falloff | Steep. Hard edge, tight radius | Gentle. Soft edge, long tail |
+| If the source is lost | Collapses **instantly** | Lingers for a long time (high hysteresis) |
+| Upkeep | Expensive and continuous — soldiers eat | None. It's a side effect of playing well |
+| What it does to land | **Holds** it | **Converts** it |
+| Can it take defended ground? | Yes — the only thing that can | No |
+| Character | Seize | Keep |
+
+The asymmetry is the whole design. Neither is a strictly better version of the
+other, and neither can do the other's job.
+
+### What emits cultural pressure
+
+Critically: **there is no "culture building."** A lever you build to produce culture
+would be exactly the kind of bolted-on system to avoid. Cultural pressure is the
+*output of the city game*, radiated by ordinary buildings:
+
+- **Prosperity** — goods actually flowing, people actually fed.
+- **Quality** — a building's evolution state (see `00`, Pillar B). A flourishing,
+  densified townhouse emits strongly. **A slum emits nothing, or negative.**
+- **Age and history** — long-established districts emit more. (Ties directly to
+  Pillar E: the city remembers, and its memory is worth territory.)
+- **Amenity** — markets, taverns, temples, gardens. You place these for your own
+  citizens' sake; the cultural emission is a consequence, not the reason.
+- **Occasional spikes** — festivals, a completed monument.
+
+This closes a loop that makes decay genuinely frightening: **let a district rot and
+you don't just lose the district, you lose ground.** Pillar B's visible decay
+becomes territorial loss, which is a far sharper motivator than an unhappiness stat.
+
+---
+
+## 3. Two states of territory: held vs. integrated
+
+This is where the two fields produce a real strategic structure.
+
+**Held** — inside your military contour, cultural pressure below threshold.
+
+- Continuous garrison upkeep.
+- Unrest. Production penalty.
+- **No in-migration**, and **buildings do not evolve or densify** — they may decay.
+- Remove the garrison and you lose it immediately.
+
+**Integrated** — cultural pressure above threshold.
+
+- Full function: growth, migration, evolution, densification.
+- Genuinely yours. **The garrison can be withdrawn and the land stays.**
+
+The conversion from held to integrated takes time *and* requires a genuinely good
+town nearby to radiate into it. You cannot buy it, and you cannot rush it.
+
+**This is the anti-snowball mechanism, and it's structural rather than arbitrary.**
+Blitzing gets you a wide, sullen, expensive empire that produces almost nothing and
+bleeds upkeep. Growth has a natural speed limit that comes from the fiction rather
+than from a rule the player has to be told.
+
+### The supply rule that makes it bite
+
+From `00`: warbands outside your territory drain supply and weaken, so your reach
+is set by your economy.
+
+**Refinement: supply extends from *integrated* territory only, never from held.**
+
+You therefore cannot chain conquests. Take a province, and to push further you must
+first make it genuinely yours — which means making it a decent place to live. The
+conqueror is forced to become a city-builder between wars, by the mechanics rather
+than by scolding. Expansion becomes a rhythm: seize, integrate, seize, integrate.
+
+---
+
+## 4. Culture flows both ways — the peacetime threat
+
+The mechanic's best property is that it is not a tool you own. It's a field, and
+your neighbours are in it.
+
+If a rival's beautiful, prosperous city sits near your grim frontier town, **their
+culture pushes into your land.** Your citizens drift. Your buildings stop
+flourishing. Your border quietly recedes — in peacetime, with no war declared and
+nobody attacking anything.
+
+You can answer this with soldiers, but only in the shallow way: garrisoning holds
+the ground while reverting it to *held*, so you pay upkeep forever for land that
+produces little and would leave the moment you looked away.
+
+**The real answer is to make your own town better.** Defence by city-building.
+
+Two things this buys:
+
+1. **A pacifist has a real game.** Genuine expansion path, genuine stakes, genuine
+   threat — without ever raising a warband.
+2. **Neglect has teeth.** A player who lets the frontier rot is punished
+   territorially and *visibly*, without a single warning popup or red number.
+
+---
+
+## 5. Situations this produces
+
+These are the emergent states worth designing toward — the ones that would make
+good stories:
+
+**The gilded cage.** You hold a province militarily for years and never integrate
+it. It never pays for itself and never will. Do you finally invest in it, or cut it
+loose?
+
+**The drift.** You lose land in peacetime because a district rotted while you were
+looking elsewhere. Entirely your fault, entirely visible in hindsight, no combat
+involved.
+
+**The bought frontier.** You deliberately build a beautiful town on a contested
+border as an act of aggression. Culture as a weapon, no army required. Your
+neighbour can see exactly what you're doing and can only answer in kind.
+
+**Inherited pride.** You conquer a town *nicer than yours*. It keeps radiating its
+own culture, resists integration hard, and may culturally re-convert its
+surroundings back toward its origin — you've swallowed something that's still
+pushing outward from inside you. **Conquering above your weight is genuinely
+dangerous**, which is thematically excellent and, as far as I know, novel.
+
+---
+
+## 6. Visual language (serving the no-numbers experiment)
+
+The two fields are the strongest argument that Pillar A can actually work, because
+they are naturally legible:
+
+- **Military pressure**: a hard, bright, banner-coloured edge. A drawn line.
+- **Cultural pressure**: a soft warm haze with a long gradient. Light spilling out
+  of a settlement.
+- **Held but not integrated**: the hard line encloses land that your warm haze
+  *does not fill*. It reads instantly and wordlessly as "we're standing here, but
+  this isn't ours."
+- **Contested culture**: two hazes visibly interpenetrating, and you can see which
+  is winning by watching where the mixing line sits.
+- **Emission attribution**: a flourishing district visibly glows; a rotting one
+  visibly doesn't. You can see *which of your buildings* is buying you territory.
+
+All of it works at a glance, with no numbers, and it's beautiful by construction.
+
+---
+
+## 7. Risks
+
+1. **Cultural pressure could feel passive** — borders moving for reasons the player
+   can't attribute. The emission-glow rendering above is the mitigation, and it
+   needs to be in the very first prototype, not added later.
+2. **Snowball risk.** A strong player's culture could win everywhere. Candidate
+   brakes: distance falloff, hysteresis cutting both ways, and **saturation** — so
+   a merely good town competes respectably with a perfect one, and there are
+   diminishing returns on gilding.
+3. **Two overlapping fields may be hard to read at once.** Genuine unknown.
+   Prototype question, and a real threat to Pillar A.
+4. **Does culture undercut the point of fighting?** It shouldn't: culture is slow
+   and **cannot take ground that is actively defended**. Military is the only way
+   to take a held place, and the only way to take anything *now*. Speed and
+   contested ground are war's exclusive domain.
+5. **Integration could become a waiting game** — nothing to do but let the meter
+   fill. It must be something you *actively drive* by building well nearby, not
+   something you wait out.
+
+---
+
+## 8. First thing to prototype
+
+The smallest build that tests the core claim: **one map, two settlements, both
+fields, no combat at all.**
+
+If watching a well-built town silently push its border into a neglected one is
+satisfying and legible — with no war, no units, and no numbers — then the pillar
+holds and everything else can be built on it. If that isn't fun, nothing further
+up the stack will save it.
