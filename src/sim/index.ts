@@ -2,6 +2,7 @@ export * from './types';
 export * from './rng';
 export * from './terrain';
 export * from './buildings';
+export * from './conductance';
 export * from './field';
 export * from './roads';
 export * from './fabric';

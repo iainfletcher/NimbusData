@@ -112,8 +112,42 @@ That last point matters most. It converts the character system from something yo
 reason about with distances into something you reason about with *terrain*, which
 is the whole "spatial decisions in, arithmetic out" thesis.
 
-**Cost:** low. It's the same blur loop with per-cell weights instead of fixed
-ones. Genuinely a day's work for a large change in behaviour.
+**Cost:** low.
+
+### ✅ Built — verdict: keep, clearly
+
+Implemented as **geodesic emission** rather than iterated anisotropic diffusion,
+which turned out to be the right call. Iterating a diffusion far enough to spread
+100m would have taken hundreds of passes; instead each emission floods outward
+cheapest-first through a cost field (`conductance.ts`) and stamps its falloff
+against *accumulated cost* rather than straight-line distance. Same effect,
+one Dijkstra per emission, fast enough to run on every edit.
+
+Cost field: open ground 1, roads 0.4, worn paths 0.68, water 9, plus a
+Perona–Malik edge-stopping term on slope so a scarp is nearly opaque and gentle
+ground is transparent.
+
+**Measured against the old behaviour** (flat cost makes geodesic ≡ Euclidean, so
+it's a clean A/B, kept as the *Flow* toggle):
+
+| | Town coherence | Cells covered |
+|---|---|---|
+| Geodesic (flow on) | **88%** | 7,933 |
+| Euclidean (flow off) | 72% | 7,246 |
+
+**I expected this to cost coherence and it gained 16 points.** The reasoning I had
+was wrong: I assumed character bleeding along roads would mix the quarters
+together. The opposite happens — overlapping *discs* were the thing muddling the
+open ground between quarters, and channelling each quarter's character along its
+own streets makes them interpenetrate **less**. Districts came out more distinct,
+not less, and they cover more ground because road corridors carry them further.
+
+Visually the fields are no longer discs: character streams down the high street,
+pools where streets meet, and stops dead at the river.
+
+Also added `field.townCoherence()` and a readout, because that A/B is the only
+way to tell whether a change to the field helped, and eyeballing a coloured haze
+is not.
 
 ### 4. Flow accumulation — rivers the terrain explains
 

@@ -5,6 +5,7 @@ import { emptyFabric, generateFabric, orientToFabric, type Fabric, type StreetVe
 import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
+import { Conductance, openGround } from './conductance';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -39,6 +40,13 @@ export class World {
   private _fabricVersion = 0;
   private _decor: Decor = emptyDecor();
   readonly crowd = new Crowd();
+  private conductance: Conductance = openGround();
+  /**
+   * When false the character field falls back to flat cost, which makes geodesic
+   * spread equivalent to Euclidean. Kept as a live A/B so the effect of the cost
+   * field can be judged rather than assumed.
+   */
+  useFlow = true;
 
   constructor(readonly seed: number) {
     this.terrain = new Terrain(seed);
@@ -231,6 +239,10 @@ export class World {
     );
     // People walk the network, so they have to be rehomed when it changes.
     this.crowd.reset(this.roads, this._fabric, this.buildings.length, this.seed);
+    // Character travels the same ground people do, so the cost field follows the
+    // fabric too — and the character field has to be redone once it changes.
+    this.conductance = Conductance.build(this.terrain, this.roads, this._fabric);
+    this.fieldDirty = true;
     this.fabricDirty = false;
     this.fabricCooldown = 0;
     this._fabricVersion++;
@@ -240,7 +252,7 @@ export class World {
     this.tickCount++;
 
     if (this.fieldDirty) {
-      this.field.rebuild(this.buildings);
+      this.field.rebuild(this.buildings, this.useFlow ? this.conductance : openGround());
       this.fieldDirty = false;
     }
 
@@ -258,6 +270,11 @@ export class World {
    * Ambient people advance on real elapsed time rather than the sim tick, since
    * they feed back into nothing and 10Hz walking looks like stop-motion.
    */
+  /** Force the character field to be recomputed, e.g. after toggling flow. */
+  invalidateField(): void {
+    this.fieldDirty = true;
+  }
+
   updatePeople(dtSeconds: number): void {
     this.crowd.update(dtSeconds);
   }

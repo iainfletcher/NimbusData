@@ -172,6 +172,13 @@ async function main(): Promise<void> {
     btnStreets.setAttribute('aria-pressed', String(on));
   }
 
+  const btnFlow = el<HTMLButtonElement>('toggle-flow');
+  btnFlow.addEventListener('click', () => {
+    world.useFlow = !world.useFlow;
+    world.invalidateField();
+    btnFlow.setAttribute('aria-pressed', String(world.useFlow));
+  });
+
   const btnPave = el<HTMLButtonElement>('tool-pave');
   btnPave.setAttribute('aria-pressed', 'false');
   btnPave.addEventListener('click', () => setPaving(!paving));
@@ -342,12 +349,22 @@ async function main(): Promise<void> {
   const rCount = el('r-count');
   const rStreets = el('r-streets');
   const rPeople = el('r-people');
+  const rTown = el('r-town');
+  let townEvery = 0;
   const rTicks = el('r-ticks');
 
   function updateReadout(): void {
     rCount.textContent = String(world.buildings.length);
     rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;
     rPeople.textContent = String(world.crowd.people.length);
+
+    // Scanning every cell is too slow for every frame, and it barely changes.
+    if (townEvery++ % 45 === 0) {
+      const stats = world.field.townCoherence();
+      rTown.textContent = stats.cells
+        ? `${Math.round(stats.mean * 100)}% over ${stats.cells}`
+        : '—';
+    }
     rTicks.textContent = String(world.ticks);
 
     if (!cursor) {
