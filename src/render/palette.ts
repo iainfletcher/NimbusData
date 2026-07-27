@@ -52,11 +52,18 @@ export function shade(colour: number, amount: number): number {
   return amount >= 0 ? mix(colour, 0xffffff, amount) : mix(colour, 0x000000, -amount);
 }
 
-/** Terrain colour by height in metres. */
+/**
+ * Ground colour by height. Water is drawn separately now, from the derived
+ * surface rather than from "below zero", so this only ever colours land.
+ */
 export function terrainColour(h: number): number {
-  if (h <= -6) return TERRAIN.deepWater;
-  if (h <= 0) return mix(TERRAIN.deepWater, TERRAIN.shallowWater, (h + 6) / 6);
-  if (h < 2) return mix(TERRAIN.shore, TERRAIN.lowland, h / 2);
-  if (h < 14) return mix(TERRAIN.lowland, TERRAIN.upland, (h - 2) / 12);
-  return mix(TERRAIN.upland, TERRAIN.high, Math.min(1, (h - 14) / 16));
+  if (h < 1) return mix(TERRAIN.shore, TERRAIN.lowland, Math.max(0, h));
+  if (h < 16) return mix(TERRAIN.lowland, TERRAIN.upland, (h - 1) / 15);
+  return mix(TERRAIN.upland, TERRAIN.high, Math.min(1, (h - 16) / 22));
+}
+
+/** Water colour by depth, so a river reads shallower than a lake. */
+export function waterColour(depth: number): number {
+  const t = Math.min(1, Math.max(0, depth / 5));
+  return mix(TERRAIN.shallowWater, TERRAIN.deepWater, t);
 }

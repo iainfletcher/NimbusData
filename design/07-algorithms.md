@@ -177,7 +177,55 @@ learns to read the river.
 Pairs naturally with **hydraulic erosion** (droplet simulation) if we ever want
 the terrain to look weathered rather than merely lumpy.
 
-**Cost:** low. A sort and two passes. The hard part is deciding thresholds.
+**Cost:** low.
+
+### ✅ Built — verdict: keep, and it pulled a whole terrain toolset in with it
+
+Done as a **terrain toolset** rather than a lone algorithm, which was the right
+call — flow accumulation on a fixed heightmap is a fact about the map; flow
+accumulation on a heightmap you can *reshape* is a toy.
+
+Three parts:
+
+- **`erosion.ts`** — droplet hydraulic erosion at generation. Fractal noise makes
+  lumps, not landscape; it has no idea what water does. Erosion carves valleys
+  that join up and lays sediment where the ground flattens.
+- **`hydrology.ts`** — priority-flood ⇒ D8 ⇒ accumulation. Lakes are wherever the
+  fill raised the ground; rivers are wherever enough catchment converges.
+- **Terrain brushes** — raise, lower, level, at feature scale with a smooth
+  falloff. **Every stroke re-derives the hydrology**, so damming a valley makes a
+  lake because the fill pass now finds a depression, not because anything
+  special-cases dams.
+
+The old hand-carved river is gone. The map now has a **dendritic drainage
+network** — tributaries branching out of the uplands, merging as they fall, and
+reaching the sea — and the town sits on a coast rather than beside a painted
+channel.
+
+**Three bugs, all instructive:**
+
+1. **No rivers at all, only ponds.** Priority-flood fills a depression to exactly
+   level, and D8 cannot drain a **flat** — every neighbour is the same height, so
+   the search finds no downhill and flow stops dead. Fixed with the standard
+   Priority-Flood **+ ε** variant: each filled cell sits an epsilon above the one
+   that reached it, so filled ground still drains.
+2. **Parallel flow, no channels.** A tilted plane with fine noise drains in
+   parallel — every cell to its own neighbour, nothing ever converging, so
+   accumulation stays near zero everywhere. Drainage needs somewhere to
+   *collect*, so the terrain was rebuilt with **low-frequency basins dominant**
+   and fine noise only roughening them.
+3. **Rivers rendering as dashed lines.** Not hydrology at all — the ground is
+   drawn decimated at 8m blocks and I was sampling water the same way, so half of
+   every one-cell-wide channel was skipped. Water is now drawn at full grid
+   resolution, and widened by catchment so a trunk river reads as a river.
+
+The third one is worth remembering as a class of mistake: I spent two rounds
+tuning a simulation that was already correct, because the *view* of it was lying.
+
+**Free gameplay hook, as hoped.** `millPotential` = √catchment × fall, readable in
+the cursor readout as "good / possible / —". A watermill needs flow *and* drop,
+so the handful of places one can go are a property of the landscape rather than a
+rule the player has to be told.
 
 ### 5. Space colonisation — trees that are trees
 

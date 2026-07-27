@@ -60,6 +60,10 @@ async function main(): Promise<void> {
 
   let selectedType: string | null = null;
   let paving = false;
+  type TerraMode = 'raise' | 'lower' | 'level';
+  let terra: TerraMode | null = null;
+  const BRUSH_RADIUS = 26;
+  const BRUSH_STRENGTH = 1.5;
   let roadClass: RoadClass | null = null;
   let roadPoints: Vec2[] = [];
   let paused = false;
@@ -130,6 +134,10 @@ async function main(): Promise<void> {
       setRoadClass(null);
       paving = false;
       btnPave?.setAttribute('aria-pressed', 'false');
+      terra = null;
+      for (const btn of Object.values(terraButtons ?? {})) {
+        btn.setAttribute('aria-pressed', 'false');
+      }
     }
     selectedType = selectedType === id ? null : id;
     for (const [typeId, btn] of itemButtons) {
@@ -170,6 +178,48 @@ async function main(): Promise<void> {
   function setStreets(on: boolean): void {
     view.showStreets = on;
     btnStreets.setAttribute('aria-pressed', String(on));
+  }
+
+  const terraButtons: Record<TerraMode, HTMLButtonElement> = {
+    raise: el<HTMLButtonElement>('terra-raise'),
+    lower: el<HTMLButtonElement>('terra-lower'),
+    level: el<HTMLButtonElement>('terra-level'),
+  };
+
+  function setTerra(mode: TerraMode | null): void {
+    terra = mode;
+    for (const [k, btn] of Object.entries(terraButtons)) {
+      btn.setAttribute('aria-pressed', String(k === mode));
+    }
+    if (mode) {
+      selectType(null);
+      setRoadClass(null);
+      setPaving(false);
+      terra = mode;
+      for (const [k, btn] of Object.entries(terraButtons)) {
+        btn.setAttribute('aria-pressed', String(k === mode));
+      }
+    }
+    view.clearGhost();
+  }
+
+  for (const [mode, btn] of Object.entries(terraButtons)) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', () =>
+      setTerra(terra === mode ? null : (mode as TerraMode)),
+    );
+  }
+
+  function applyBrush(world: World, at: Vec2): void {
+    if (!terra) return;
+    world.sculpt(
+      {
+        at,
+        radius: BRUSH_RADIUS,
+        amount: terra === 'lower' ? -BRUSH_STRENGTH : BRUSH_STRENGTH,
+      },
+      terra === 'level' ? 'level' : 'raise',
+    );
   }
 
   const btnFlow = el<HTMLButtonElement>('toggle-flow');
@@ -249,6 +299,7 @@ async function main(): Promise<void> {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   let panning = false;
+  let sculpting = false;
   let lastPan = { x: 0, y: 0 };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -269,6 +320,13 @@ async function main(): Promise<void> {
 
     if (e.button !== 0) return;
     const w = camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection);
+
+    if (terra) {
+      sculpting = true;
+      applyBrush(world, w);
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
 
     if (paving) {
       if (world.paveNearestPath(w)) {
@@ -297,6 +355,13 @@ async function main(): Promise<void> {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    cursor = { x: e.offsetX, y: e.offsetY };
+
+    if (sculpting && terra) {
+      applyBrush(world, camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection));
+      return;
+    }
+
     if (panning) {
       camera.panByScreen(e.clientX - lastPan.x, e.clientY - lastPan.y);
       lastPan = { x: e.clientX, y: e.clientY };
@@ -306,6 +371,10 @@ async function main(): Promise<void> {
   });
 
   const endPan = (e: PointerEvent) => {
+    if (sculpting) {
+      sculpting = false;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    }
     if (!panning) return;
     panning = false;
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
@@ -327,7 +396,8 @@ async function main(): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (paving) setPaving(false);
+      if (terra) setTerra(null);
+      else if (paving) setPaving(false);
       else if (roadClass) setRoadClass(null);
       else selectType(null);
     } else if (e.key === 'Enter') finishRoad();
@@ -351,6 +421,8 @@ async function main(): Promise<void> {
   const rPeople = el('r-people');
   const rTown = el('r-town');
   const rStreet = el('r-street');
+  const rGround = el('r-ground');
+  const rMill = el('r-mill');
   el('r-townname').textContent = world.name;
   let townEvery = 0;
   const rTicks = el('r-ticks');
@@ -392,6 +464,12 @@ async function main(): Promise<void> {
       rDominant.style.color = '';
       rCoherence.textContent = '—';
     }
+
+    const flow = Math.round(world.terrain.flowAt(w.x, w.y));
+    rGround.textContent = `${world.terrain.heightAt(w.x, w.y).toFixed(1)}m · ${flow}`;
+
+    const mill = world.terrain.millPotentialAt(w.x, w.y);
+    rMill.textContent = mill > 3 ? 'good' : mill > 1.2 ? 'possible' : '—';
 
     const road = world.roadNear(w, 14);
     rStreet.textContent = road?.road.name ?? '—';

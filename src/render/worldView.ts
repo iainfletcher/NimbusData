@@ -19,7 +19,7 @@ import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
 import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
 import { drawDecorItem, type DecorContext } from './decor';
-import { CHARACTER_COLOURS, shade, terrainColour } from './palette';
+import { CHARACTER_COLOURS, shade, terrainColour, waterColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
 
 /** Terrain is drawn every Nth cell — 4m cells are finer than the eye needs here. */
@@ -55,6 +55,7 @@ export class WorldView {
 
   private projection: Projection;
   private terrainCacheMode: ViewMode | null = null;
+  private terrainCacheShape = -1;
 
   private buildingsDirty = true;
   private overlayDirty = true;
@@ -138,9 +139,17 @@ export class WorldView {
   render(dtSeconds = 0): void {
     this.elapsed += dtSeconds;
 
-    if (this.terrainCacheMode !== this.mode) {
+    if (
+      this.terrainCacheMode !== this.mode ||
+      this.terrainCacheShape !== this.world.terrain.shape
+    ) {
       this.drawTerrain();
       this.terrainCacheMode = this.mode;
+      this.terrainCacheShape = this.world.terrain.shape;
+      // Everything else sits on the ground, so it moves when the ground does.
+      this.streetsDirty = true;
+      this.overlayDirty = true;
+      this.buildingsDirty = true;
     }
 
     if (this.world.fabricVersion !== this.lastFabricVersion) {
@@ -202,16 +211,63 @@ export class WorldView {
 
         // Break up the flat green: patchy grazing, drier ground, bare scrapes.
         const patch = (fbm(wx / 55, wy / 55, this.world.seed ^ 0xa17, 2) - 0.5) * 0.2;
-        const colour = shade(terrainColour(avg), relief + (avg > 0 ? patch : 0));
-        // Water is flat: drawing its true corner heights makes a jagged mess.
-        const flat = avg <= 0;
+        const colour = shade(terrainColour(avg), relief + patch);
 
-        const p00 = this.project(wx, wy, flat ? 0 : h00);
-        const p10 = this.project(wx + s, wy, flat ? 0 : h10);
-        const p11 = this.project(wx + s, wy + s, flat ? 0 : h11);
-        const p01 = this.project(wx, wy + s, flat ? 0 : h01);
+        const p00 = this.project(wx, wy, h00);
+        const p10 = this.project(wx + s, wy, h10);
+        const p11 = this.project(wx + s, wy + s, h11);
+        const p01 = this.project(wx, wy + s, h01);
 
         g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill(colour);
+      }
+    }
+
+    // Water is drawn at full grid resolution, not decimated like the ground: a
+    // stream is one cell wide, so sampling every other cell skips half of it and
+    // a continuous river renders as a dashed line.
+    this.drawWater(g);
+  }
+
+  /**
+   * Water is drawn from the derived surface rather than from "height below
+   * zero": lakes sit at their fill level, rivers follow their channel, and both
+   * move the instant the ground under them is reshaped.
+   */
+  private drawWater(g: Graphics): void {
+    const t = this.world.terrain;
+    const s = CELL_SIZE;
+
+    for (let cy = 0; cy < t.height; cy++) {
+      for (let cx = 0; cx < t.width; cx++) {
+        const wx = cx * CELL_SIZE;
+        const wy = cy * CELL_SIZE;
+
+        const level = t.waterAt(wx + s / 2, wy + s / 2);
+        if (Number.isNaN(level)) continue;
+
+        const depth = level - t.heightAt(wx + s / 2, wy + s / 2);
+        const colour = waterColour(depth);
+
+        // A channel is drawn at least as wide as its catchment deserves, so a
+        // trunk river reads as a river rather than as a line of single cells.
+        const channel = t.channelWidthAt(wx + s / 2, wy + s / 2);
+        const w = Math.max(s, channel);
+        const pad = (w - s) / 2;
+        const x0 = wx - pad;
+        const y0 = wy - pad;
+        const x1 = wx + s + pad;
+        const y1 = wy + s + pad;
+
+        // A water surface is level, so all four corners share one elevation.
+        const p00 = this.project(x0, y0, level);
+        const p10 = this.project(x1, y0, level);
+        const p11 = this.project(x1, y1, level);
+        const p01 = this.project(x0, y1, level);
+
+        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
+          color: colour,
+          alpha: depth < 0.4 ? 0.72 : 1,
+        });
       }
     }
   }

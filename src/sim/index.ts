@@ -1,5 +1,7 @@
 export * from './types';
 export * from './rng';
+export * from './erosion';
+export * from './hydrology';
 export * from './terrain';
 export * from './buildings';
 export * from './conductance';

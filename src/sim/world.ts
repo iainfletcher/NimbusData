@@ -9,6 +9,7 @@ import { Conductance, openGround } from './conductance';
 import { makeNameRng, streetName, townName } from './names';
 import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
+import type { BrushStroke } from './terrain';
 
 /** Ticks a cottage must stand before it can become something. */
 const SETTLING_TICKS = 40;
@@ -328,6 +329,16 @@ export class World {
    * Ambient people advance on real elapsed time rather than the sim tick, since
    * they feed back into nothing and 10Hz walking looks like stop-motion.
    */
+  /**
+   * Reshape the ground. Everything downstream — water, routing, character —
+   * follows from the heightmap, so all of it is invalidated together.
+   */
+  sculpt(stroke: BrushStroke, mode: 'raise' | 'level' = 'raise'): void {
+    this.terrain.sculpt(stroke, mode);
+    this.fieldDirty = true;
+    this.markFabricDirty();
+  }
+
   /** Force the character field to be recomputed, e.g. after toggling flow. */
   invalidateField(): void {
     this.fieldDirty = true;
