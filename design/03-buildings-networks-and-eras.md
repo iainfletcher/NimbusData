@@ -53,17 +53,18 @@ fences, walls, washing lines, market stalls: all generated, never placed.
 
 ## 2. The vibe system — and the moment the whole design connects
 
+> ⚠️ **Superseded by `04-character-and-districts.md`.** The pleasant/grim framing
+> below was wrong — character is plural and qualitative, not a quality axis. The
+> *chain* described here survives and is the important part; the scalar model of
+> vibe does not. Read `04` for the current system.
+
 "Things that affect the vibe of the area around them" is the most important thing
 in your list, because it's the connective tissue the design was missing.
 
-Every building emits **character** into its surroundings, on a few readable axes:
-pleasant/grim, quiet/loud, grand/humble.
-
-- **Pleasant:** parks, lakes, squares, churches, tree-lined streets, fountains,
-  gardens, a good tavern.
-- **Grim:** tanneries, foundries, abattoirs, gaols, middens, railway yards,
-  gasworks.
-- **Grand:** cathedrals, town halls, palaces, monuments.
+Every building emits **character** into its surroundings. ~~On a few readable axes:
+pleasant/grim, quiet/loud, grand/humble.~~ Corrected in `04`: a location carries a
+*blend* of many qualitative characters, and what's read off it is the **dominant**
+one plus **coherence** — not a score.
 
 ### The chain
 
@@ -101,11 +102,13 @@ the Settlers way.
 
 ### Wind and terrain (worth prototyping)
 
-Let vibe **flow**: smoke drifts downwind, a hill blocks it, a river valley channels
-it. One extra parameter, highly legible (you can *see* the smoke), and it turns
-industrial siting into a proper spatial puzzle with real regional character.
+Let character **flow**: smoke drifts downwind, a hill blocks it, a river valley
+channels it. One extra parameter, highly legible (you can *see* the smoke), and it
+turns industrial siting into a proper spatial puzzle with real regional character.
 
-Watch for over-engineering — but wind is one variable and it earns its place.
+Watch for over-engineering — but wind is one variable and it earns its place. It
+matters more under `04`'s model, where flow determines which quarter a character
+bleeds into and therefore where coherence breaks down.
 
 ---
 
@@ -123,14 +126,18 @@ Your four, plus two things that are really *tools* rather than families:
 | Family | Examples | Role |
 |---|---|---|
 | **Economic** | Sawmill, smelter, farm, mill, workshop, market, dock, warehouse | The 3-node chains from `00`, Axis 3 |
-| **Civic** | Church, town hall, school, tavern, baths, theatre, park, square | Main vibe-positive emitters and the engine of cultural pressure |
+| **Civic** | Church, town hall, school, tavern, baths, theatre, park, square | The widest range of character emitters; sets what a quarter *is* |
 | **Military** | Tower, keep, barracks, wall, arsenal | Military pressure sources from `01` |
 | **Utility** | Well, conduit, sewer, gasworks, waterworks, power station | Network sources. See §5 |
 
-The interesting property: **civic buildings are the ones that win you territory.**
-They look like the "nice to have" category and they're actually the strategic one.
-That inversion is worth preserving — it means a player optimising for power ends up
-building a pleasant town, which is exactly the game we want.
+**Every family can win you territory**, because cultural pressure comes from
+strength of character rather than from niceness (`04`). A dockside, a foundry
+quarter and a genteel crescent all radiate — differently. What matters is that each
+quarter is *coherently* something.
+
+Civic is still the most *expressive* family: it has the widest range of characters
+available to it, so it's the main tool for deciding what a district becomes rather
+than merely what it produces.
 
 ---
 
@@ -245,9 +252,9 @@ vertex is labour.
 
 ## 8. Open questions
 
-1. **How many vibe axes?** Pleasant/grim alone may be enough for v1;
-   quiet/loud and grand/humble may be one dimension too many to read at a glance.
-   Prototype with one, add only if the town feels flat.
+1. ~~How many vibe axes?~~ **Resolved in `04`:** not axes at all. A palette of
+   10–14 qualitative characters, read as dominant-plus-coherence. Open questions
+   moved to `04` §6.
 2. **Does the road/rail split confuse?** Two transport tools with deliberately
    different feels is unusual. It could read as inconsistent rather than as range.
 3. **Does wind over-complicate industrial siting**, or is it the best puzzle in the

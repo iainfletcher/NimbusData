@@ -8,7 +8,8 @@ machinery.
 | `00-taste-and-mechanics.md` | Taste analysis, the core thesis, and the seven mechanic axes. Applies to both games. |
 | `01-territory-and-pressure.md` | **Game B** — the city builder. Dual military/cultural territory pressure. |
 | `02-holiday-camp.md` | **Game A** — the British holiday camp builder. Recommended first project. |
-| `03-buildings-networks-and-eras.md` | **Game B** — the resolution line, the vibe system, building families, transport, utilities, era progression. |
+| `03-buildings-networks-and-eras.md` | **Game B** — the resolution line, building families, transport, utilities, era progression. (§2 superseded by `04`.) |
+| `04-character-and-districts.md` | **Game B** — district character as a plural palette, coherence over quality, and how it drives evolution and territory. |
 
 ## The shared thesis
 
