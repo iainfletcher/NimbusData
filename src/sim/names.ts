@@ -164,6 +164,10 @@ const STREET_NAMES: Record<Character, string[]> = {
     'Orchard Walk', 'Elm Row', 'Garden Lane', 'The Butts', 'Willow Bank',
     'Spring Gardens', 'Lime Walk',
   ],
+  martial: [
+    'Castlegate', 'The Bailey', 'Bowyer Row', 'Armoury Lane', 'Rampart Walk',
+    'Barbican Street', 'Muster Green', 'Postern Row', 'Fletchergate',
+  ],
 };
 
 /** Fallback for streets running through nowhere in particular. */
@@ -212,6 +216,7 @@ const QUARTER_LABEL: Record<Character, string> = {
   rustic: 'Fields',
   raucous: 'Bankside',
   verdant: 'Gardens',
+  martial: 'Bailey',
 };
 
 export function quarterName(character: Character, town: string): string {

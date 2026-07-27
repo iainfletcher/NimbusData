@@ -18,5 +18,6 @@ export * from './land';
 export * from './economy';
 export * from './plans';
 export * from './calendar';
+export * from './military';
 export * from './rival';
 export * from './world';

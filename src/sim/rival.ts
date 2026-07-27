@@ -1,8 +1,9 @@
 import { allBuildingTypes, buildingType } from './buildings';
 import type { CharacterField } from './field';
+import type { Military } from './military';
 import { makeRng } from './rng';
-import { OWNER_PLAYER, OWNER_RIVAL, type Territory } from './territory';
-import type { Building, Character, Vec2 } from './types';
+import type { Territory } from './territory';
+import { OWNER_PLAYER, OWNER_RIVAL, type Building, type Character, type Vec2 } from './types';
 
 /**
  * A rival that actually grows.
@@ -22,6 +23,11 @@ import type { Building, Character, Vec2 } from './types';
  *   reason yours does (design/04).
  * - It builds no faster when it is losing. There is no rubber band; if you out-
  *   build it you stay ahead, and that is meant to be the reward.
+ *
+ * It plays the military half on the same terms (`01` §2). It fortifies where it
+ * is being pressed, and once it has a keep it musters columns and sends them at
+ * whatever of yours is nearest. That is what stops the pillar from only working
+ * in one direction: culture flows both ways, and so do soldiers.
  */
 
 /** Ticks between the rival adding a building. */
@@ -30,8 +36,28 @@ const BUILD_INTERVAL = 20;
 /** How far from an existing building it will settle. */
 const SPREAD = 46;
 
+/** Buildings it wants before it starts fortifying, and before it builds a keep. */
+const TOWER_AT = 14;
+const KEEP_AT = 26;
+
+/** Ticks between musters, and how many columns it will keep in the field. */
+const MUSTER_INTERVAL = 190;
+const MAX_BANDS = 2;
+
+/** Ticks between re-issuing marching orders. */
+const ORDER_INTERVAL = 40;
+
+export interface RivalOrders {
+  /** Muster a warband, if it has a keep free. */
+  muster: boolean;
+  /** Warband id → where to send it. */
+  marches: { id: number; to: Vec2 }[];
+}
+
 export class Rival {
   private cooldown = BUILD_INTERVAL;
+  private musterCooldown = MUSTER_INTERVAL;
+  private orderCooldown = ORDER_INTERVAL;
   private rng: () => number;
 
   /** Buildings it has put up since the start, for the readout. */
@@ -39,6 +65,67 @@ export class Rival {
 
   constructor(seed: number) {
     this.rng = makeRng(seed ^ 0x71a1);
+  }
+
+  /**
+   * What the rival wants its soldiers to do this tick.
+   *
+   * Deliberately simple, and deliberately not adaptive: it musters on a fixed
+   * clock and marches at whatever of yours is closest. A cleverer opponent would
+   * be a worse test of the pillar, because then a border that moved would tell
+   * you about the AI rather than about whether your town was good enough.
+   */
+  orders(military: Military, territory: Territory, buildings: readonly Building[]): RivalOrders {
+    const out: RivalOrders = { muster: false, marches: [] };
+    const own = buildings.filter((b) => b.owner === OWNER_RIVAL);
+    const bands = military.bandsOf(OWNER_RIVAL);
+
+    if (this.musterCooldown-- <= 0) {
+      this.musterCooldown = MUSTER_INTERVAL;
+      out.muster = bands.length < MAX_BANDS;
+    }
+
+    if (this.orderCooldown-- <= 0) {
+      this.orderCooldown = ORDER_INTERVAL;
+      for (const band of bands) {
+        // A column already fighting is left alone; being told to walk away
+        // mid-battle is how an army loses one column at a time.
+        const target = this.nearestPlayerGround(band.pos, territory)
+          ?? this.nearestPlayerBuilding(band.pos, buildings);
+        if (target) out.marches.push({ id: band.id, to: target });
+      }
+    }
+
+    void own;
+    return out;
+  }
+
+  /** The closest ground the player has actually integrated, searched on rings. */
+  private nearestPlayerGround(from: Vec2, territory: Territory): Vec2 | null {
+    for (let r = 80; r <= 640; r += 80) {
+      const steps = Math.max(8, Math.round(r / 14));
+      for (let i = 0; i < steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        const x = from.x + Math.cos(a) * r;
+        const y = from.y + Math.sin(a) * r;
+        if (territory.integratedAt(x, y) === OWNER_PLAYER) return { x, y };
+      }
+    }
+    return null;
+  }
+
+  private nearestPlayerBuilding(from: Vec2, buildings: readonly Building[]): Vec2 | null {
+    let best: Vec2 | null = null;
+    let bestD = Infinity;
+    for (const b of buildings) {
+      if (b.owner !== OWNER_PLAYER) continue;
+      const d = Math.hypot(b.pos.x - from.x, b.pos.y - from.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: b.pos.x, y: b.pos.y };
+      }
+    }
+    return best;
   }
 
   /**
@@ -62,7 +149,7 @@ export class Rival {
     // Reinforce what is already there. A quarter that knows what it is projects
     // further, so the rival gets stronger by getting *clearer*, not just bigger.
     const reading = field.read(anchor.pos.x, anchor.pos.y);
-    const typeId = this.pickType(reading.dominant);
+    const typeId = this.pickFortification(own) ?? this.pickType(reading.dominant);
 
     // Push toward the frontier rather than sprawling evenly.
     const toward = this.frontierDirection(anchor.pos, territory);
@@ -137,10 +224,46 @@ export class Rival {
     return { x: x / len, y: y / len };
   }
 
-  /** A building type that emits the character already dominant here. */
+  /**
+   * Whether this build should be a fortification instead of a town building.
+   *
+   * A settlement fortifies once it is worth defending, and it builds one keep
+   * before it builds a second tower — a town with two keeps and no market is not
+   * a town. Returns null to leave the choice to the character field.
+   */
+  private pickFortification(own: readonly Building[]): string | null {
+    let towers = 0;
+    let keeps = 0;
+    for (const b of own) {
+      const id = b.typeId;
+      if (id === 'watchtower') towers++;
+      else if (id === 'keep') keeps++;
+    }
+
+    if (own.length >= KEEP_AT && keeps === 0) return 'keep';
+    if (own.length >= TOWER_AT && towers < 1 + Math.floor(own.length / 40)) {
+      return this.rng() < 0.5 ? 'watchtower' : null;
+    }
+    return null;
+  }
+
+  /**
+   * A building type that emits the character already dominant here.
+   *
+   * Fortifications are explicitly excluded, and finding out why was worth the
+   * trial that caught it. A watchtower emits `martial` strongly, so the moment
+   * one exists the dominant character around it is martial — and reinforcing
+   * the dominant character then means *building more fortifications*, which
+   * emit more martial, which is a settlement that becomes convinced it is a
+   * fortress and never builds anything else. It out-garrisoned a besieging
+   * column indefinitely, for free.
+   *
+   * **The rival fortifies on a policy, never on a vibe.** Walls come from
+   * `pickFortification`, which is rationed; everything else comes from here.
+   */
   private pickType(dominant: Character | null): string {
     const candidates = allBuildingTypes().filter((t) => {
-      if (t.isEvolved) return false;
+      if (t.isEvolved || t.family === 'military') return false;
       if (t.family === 'residential') return true;
       if (!dominant) return false;
       return t.emissions.some((e) => e.character === dominant && e.strength > 0.6);

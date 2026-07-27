@@ -6,15 +6,16 @@ import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type Roa
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
-import { OWNER_PLAYER, OWNER_RIVAL, Territory } from './territory';
+import { Territory } from './territory';
 import { Calendar } from './calendar';
 import { Rival } from './rival';
+import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military';
 import { Economy, roadCost } from './economy';
 import { computeLand, type Land } from './land';
 import { planRoads, type PlanSpec } from './plans';
 import { makeNameRng, streetName, townName } from './names';
 import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
-import { WORLD_SIZE, type Building, type Vec2 } from './types';
+import { OWNER_PLAYER, OWNER_RIVAL, WORLD_SIZE, type Building, type Vec2 } from './types';
 import type { BrushStroke } from './terrain';
 
 /** Ticks a cottage must stand before it can become something. */
@@ -34,6 +35,13 @@ const WATER_SETTLE_TICKS = 3;
  * there is nothing to gain from resolving it every tenth of a second.
  */
 const TERRITORY_INTERVAL = 12;
+
+/**
+ * Ticks between military recomputations. Faster than culture on purpose: a
+ * garrison's hold is meant to appear the moment it is built and vanish the
+ * moment it falls, so the field cannot be allowed to lag far behind the map.
+ */
+const MILITARY_INTERVAL = 4;
 
 export interface PlacementResult {
   ok: boolean;
@@ -61,19 +69,33 @@ export class World {
   readonly crowd = new Crowd();
   private conductance: Conductance = openGround();
   readonly territory = new Territory();
+  readonly military = new Military();
   readonly economy = new Economy();
   readonly calendar = new Calendar();
   private rival: Rival;
   /** How many buildings the rival has added since the start. */
   rivalBuilt = 0;
+  /** Buildings razed and buildings that changed hands, for the readout. */
+  razed = 0;
+  captured = 0;
+  /** Per-keep muster cooldowns, keyed by building id. */
+  private musterReady = new Map<number, number>();
   private land: Land;
   private territoryCooldown = 0;
+  private militaryCooldown = 0;
   /**
    * When false the character field falls back to flat cost, which makes geodesic
    * spread equivalent to Euclidean. Kept as a live A/B so the effect of the cost
    * field can be judged rather than assumed.
    */
   useFlow = true;
+
+  /**
+   * Whether the rival acts on its own. Off, it still owns whatever it owns and
+   * still radiates — it simply stops building and campaigning, which is what
+   * lets a trial isolate one mechanic without a second town growing into it.
+   */
+  rivalActive = true;
 
   /** This town's name. Fixed by the seed. */
   readonly name: string;
@@ -396,10 +418,20 @@ export class World {
 
     for (const b of this.buildings) b.age++;
 
-    this.economy.update(this.buildings, this.land, this.terrain, this.calendar.effects);
+    this.economy.update(
+      this.buildings,
+      this.land,
+      this.terrain,
+      this.calendar.effects,
+      this.military.bandsOf(OWNER_PLAYER).length,
+      this.territory,
+    );
 
     // The rival only proposes; the world decides whether the ground allows it.
-    for (const move of this.rival.propose(this.buildings, this.field, this.territory)) {
+    const proposals = this.rivalActive
+      ? this.rival.propose(this.buildings, this.field, this.territory)
+      : [];
+    for (const move of proposals) {
       const placed = this.place(
         move.typeId,
         move.pos,
@@ -419,6 +451,50 @@ export class World {
       else this.rebuildFabric();
     }
 
+    // The rival's soldiers. Same API the player's UI uses, so it can never do
+    // anything the player is not also allowed to do.
+    const orders = this.rivalActive
+      ? this.rival.orders(this.military, this.territory, this.buildings)
+      : { muster: false, marches: [] };
+    if (orders.muster) {
+      const keep = this.buildings.find(
+        (b) => b.owner === OWNER_RIVAL && buildingType(b.typeId).garrison?.musters,
+      );
+      if (keep) this.muster(keep.pos, OWNER_RIVAL);
+    }
+    for (const order of orders.marches) {
+      const band = this.military.warbands.find((w) => w.id === order.id);
+      if (band) this.orderWarband(band, order.to);
+    }
+
+    // Soldiers move every tick, because a marching column that teleported every
+    // twelfth tick would be unwatchable — and being watchable is the whole of
+    // Pillar A. The *field* they generate is resolved on the slower cadence
+    // below with everything else.
+    this.military.advance(
+      this.terrain,
+      (wx, wy) => this.territory.integratedAt(wx, wy),
+      (b) => {
+        if (this.remove(b.id)) this.razed++;
+      },
+      this.buildings,
+    );
+    for (const [id, left] of this.musterReady) {
+      if (left <= 1) this.musterReady.delete(id);
+      else this.musterReady.set(id, left - 1);
+    }
+
+    // The military field runs three times as often as the cultural one, which is
+    // the cadence saying the same thing the design does: soldiers are the fast
+    // system. It is also much the cheaper of the two — a handful of tight floods
+    // against a hundred long ones.
+    if (this.militaryCooldown > 0) {
+      this.militaryCooldown--;
+    } else {
+      this.militaryCooldown = MILITARY_INTERVAL;
+      this.military.update(this.buildings, this.useFlow ? this.conductance : openGround());
+    }
+
     // Culture is slow by design, so it is recomputed on a lazy cadence and the
     // claim is then allowed to drift by however many ticks have passed.
     if (this.territoryCooldown > 0) {
@@ -430,7 +506,9 @@ export class World {
         this.field,
         this.useFlow ? this.conductance : openGround(),
         TERRITORY_INTERVAL,
+        this.military,
       );
+      this.driftBuildings(TERRITORY_INTERVAL);
     }
 
     // Water settles a beat after the last brush stroke, then everything that
@@ -464,6 +542,105 @@ export class World {
     return hit ? hit.angle : 0;
   }
 
+  // ---- The military half (design/01) -------------------------------------
+
+  /**
+   * Raise a warband at a keep. Returns null if there is no keep in reach, it is
+   * still recovering from the last muster, or the town cannot pay.
+   *
+   * Note what mustering is *not*: it is not selecting a unit type, arranging a
+   * formation or choosing an upgrade. The only decisions are whether you can
+   * afford a standing army and where you point it, which is where `00` wants
+   * the decisions to live.
+   */
+  muster(near: Vec2, owner = OWNER_PLAYER): Warband | null {
+    const keep = this.musterableNear(near, owner);
+    if (!keep) return null;
+
+    if (owner === OWNER_PLAYER) {
+      if (!this.economy.canAfford(MUSTER_COST)) return null;
+      this.economy.spend(MUSTER_COST);
+    }
+
+    this.musterReady.set(keep.id, MUSTER_COOLDOWN);
+    // Raised at the gate rather than inside the walls, so it is visible.
+    const type = buildingType(keep.typeId);
+    return this.military.muster(owner, {
+      x: keep.pos.x + Math.cos(keep.rotation) * (type.width / 2 + 8),
+      y: keep.pos.y + Math.sin(keep.rotation) * (type.depth / 2 + 8),
+    });
+  }
+
+  /** Send a column somewhere, routed over the current cost field. */
+  orderWarband(band: Warband, to: Vec2): void {
+    this.military.order(band, to, this.useFlow ? this.conductance : openGround());
+  }
+
+  /** A keep of this owner within reach that is ready to raise a warband. */
+  musterableNear(near: Vec2, owner = OWNER_PLAYER, maxDistance = 60): Building | null {
+    let best: Building | null = null;
+    let bestD = maxDistance;
+
+    for (const b of this.buildings) {
+      if (b.owner !== owner) continue;
+      if (!buildingType(b.typeId).garrison?.musters) continue;
+      if (this.musterReady.has(b.id)) continue;
+      const d = Math.hypot(b.pos.x - near.x, b.pos.y - near.y);
+      if (d <= bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+
+    return best;
+  }
+
+  /** Ticks left before this keep can muster again, or 0 if it is ready. */
+  musterCooldown(id: number): number {
+    return this.musterReady.get(id) ?? 0;
+  }
+
+  /**
+   * Ground changes hands, and it carries the buildings standing on it.
+   *
+   * This is `01` §2's "culture **converts** it" taken literally, and it is what
+   * makes the peacetime threat of §4 real rather than decorative: let a frontier
+   * quarter rot beside a better neighbour and you do not merely lose the map
+   * shading, you lose the buildings.
+   *
+   * It is also the design's most plausible runaway, since every capture feeds
+   * the captor, so it is deliberately the slowest thing in the game. A building
+   * has to stand on firmly foreign ground for a long time, the drift decays
+   * whenever it does not, and holding the ground with soldiers stops it dead —
+   * which is exactly the shallow, expensive answer §4 says soldiers should be.
+   */
+  private driftBuildings(steps: number): void {
+    const gain = 0.0075 * steps;
+    const decay = 0.02 * steps;
+    let flipped = false;
+
+    for (const b of this.buildings) {
+      const { owner, standing } = this.territory.standingAt(b.pos.x, b.pos.y);
+      const foreign =
+        standing === 'integrated' && owner !== null && owner !== b.owner;
+
+      if (!foreign) {
+        if (b.drift) b.drift = Math.max(0, b.drift - decay);
+        continue;
+      }
+
+      b.drift = (b.drift ?? 0) + gain;
+      if (b.drift >= 1) {
+        b.owner = owner;
+        b.drift = 0;
+        this.captured++;
+        flipped = true;
+      }
+    }
+
+    if (flipped) this.fieldDirty = true;
+  }
+
   /** Force the character field to be recomputed, e.g. after toggling flow. */
   invalidateField(): void {
     this.fieldDirty = true;
@@ -491,6 +668,18 @@ export class World {
 
       const type = buildingType(b.typeId);
       if (!type.evolvesTo || b.age < SETTLING_TICKS) continue;
+
+      // A building only flourishes on ground its own side has actually made
+      // theirs (design/01 §3).
+      //
+      // Three cases, and the rule reads the same way in all of them: ground you
+      // merely *hold* does not evolve, ground somebody else has integrated does
+      // not evolve, and open country — which is where every town starts — does.
+      // Nothing is destroyed and nothing is forbidden; a quarter simply stops
+      // becoming anything, which is what an occupation looks like from inside.
+      const ground = this.territory.standingAt(b.pos.x, b.pos.y);
+      if (ground.standing === 'held' || ground.standing === 'contested') continue;
+      if (ground.owner !== null && ground.owner !== b.owner) continue;
 
       const reading = this.field.read(b.pos.x, b.pos.y);
       if (!reading.dominant || reading.coherence < COHERENCE_THRESHOLD) continue;

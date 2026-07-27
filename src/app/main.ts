@@ -26,10 +26,11 @@ const SIM_TICK_MS = 100;
  */
 const FRONTAGE_SNAP = 26;
 const SETBACK = 1.6;
-const FAMILY_ORDER: BuildingFamily[] = ['economic', 'civic', 'residential'];
+const FAMILY_ORDER: BuildingFamily[] = ['economic', 'civic', 'military', 'residential'];
 const FAMILY_LABELS: Record<BuildingFamily, string> = {
   economic: 'Economic',
   civic: 'Civic',
+  military: 'Military',
   residential: 'Residential',
 };
 
@@ -48,6 +49,12 @@ async function main(): Promise<void> {
   const camera = new Camera(app.screen.width, app.screen.height);
   const view = new WorldView(world, camera, 'iso');
   app.stage.addChild(view.root);
+
+  // A test seam. `scripts/trial.mjs` exercises the simulation headlessly, but
+  // some questions — does a campaign read on screen? — can only be answered by
+  // driving the real build, and a browser harness cannot place a keep on a
+  // contested frontier by clicking at a guessed pixel.
+  Object.assign(window, { __toy: { world, camera, view } });
 
   // Open on the ground the test town occupies, close enough to read a street.
   const startX = WORLD_SIZE / 2 + 60;
@@ -73,6 +80,8 @@ async function main(): Promise<void> {
   let roadPoints: Vec2[] = [];
   let paused = false;
   let cursor: { x: number; y: number } | null = null;
+  let warbandTool = false;
+  let selectedBand: number | null = null;
 
   /**
    * Where a building would actually go, given the road it is being placed
@@ -134,8 +143,18 @@ async function main(): Promise<void> {
     }
   }
 
+  /** Put the warband tool down without disturbing whatever picked it up. */
+  function dropWarbandTool(): void {
+    if (!warbandTool) return;
+    warbandTool = false;
+    selectedBand = null;
+    btnWarband.setAttribute('aria-pressed', 'false');
+    view.setSelectedBand(null);
+  }
+
   function selectType(id: string | null): void {
     if (id) {
+      dropWarbandTool();
       setRoadClass(null);
       paving = false;
       btnPave?.setAttribute('aria-pressed', 'false');
@@ -196,6 +215,7 @@ async function main(): Promise<void> {
   };
 
   function setTerra(mode: TerraMode | null): void {
+    if (mode) dropWarbandTool();
     terra = mode;
     for (const [k, btn] of Object.entries(terraButtons)) {
       btn.setAttribute('aria-pressed', String(k === mode));
@@ -245,6 +265,7 @@ async function main(): Promise<void> {
   };
 
   function setPlan(kind: PlanKind | null): void {
+    if (kind) dropWarbandTool();
     plan = kind;
     for (const [k, btn] of Object.entries(planButtons)) {
       btn.setAttribute('aria-pressed', String(k === kind));
@@ -279,6 +300,67 @@ async function main(): Promise<void> {
   btnPave.setAttribute('aria-pressed', 'false');
   btnPave.addEventListener('click', () => setPaving(!paving));
 
+  /**
+   * One tool for the whole military game (design/01).
+   *
+   * Click a keep to raise a column, click a column to pick it up, click ground to
+   * send it. There is no unit roster, no stance, no formation and no combat
+   * interface, because the decisions this design cares about were all made
+   * earlier: where you built, whether you could afford an army, and whether the
+   * ground you are marching over is integrated enough to feed it.
+   */
+  const btnWarband = el<HTMLButtonElement>('tool-warband');
+  btnWarband.setAttribute('aria-pressed', 'false');
+
+  function setWarband(on: boolean): void {
+    warbandTool = on;
+    if (!on) selectedBand = null;
+    btnWarband.setAttribute('aria-pressed', String(on));
+    view.setSelectedBand(on ? selectedBand : null);
+    if (on) {
+      selectType(null);
+      setRoadClass(null);
+      setPaving(false);
+      setTerra(null);
+      setPlan(null);
+      warbandTool = true;
+      btnWarband.setAttribute('aria-pressed', 'true');
+      view.showBorders = true;
+      btnBorders.setAttribute('aria-pressed', 'true');
+    }
+  }
+
+  btnWarband.addEventListener('click', () => setWarband(!warbandTool));
+
+  /** Resolve a click while the warband tool is up. Returns a note for the hint. */
+  function warbandClick(at: Vec2): void {
+    // 1. A column of yours under the cursor becomes the selection.
+    const mine = world.military.bandNear(at, 22, 0);
+    if (mine && mine.id !== selectedBand) {
+      selectedBand = mine.id;
+      view.setSelectedBand(selectedBand);
+      return;
+    }
+
+    // 2. With one selected, anywhere else is an order to march.
+    if (selectedBand !== null) {
+      const band = world.military.warbands.find((w) => w.id === selectedBand);
+      if (band && band.owner === 0) {
+        world.orderWarband(band, at);
+        return;
+      }
+      selectedBand = null;
+      view.setSelectedBand(null);
+    }
+
+    // 3. Otherwise, a keep in reach raises a new column.
+    const raised = world.muster(at);
+    if (raised) {
+      selectedBand = raised.id;
+      view.setSelectedBand(selectedBand);
+    }
+  }
+
   const roadButtons: Record<RoadClass, HTMLButtonElement> = {
     lane: el<HTMLButtonElement>('road-lane'),
     street: el<HTMLButtonElement>('road-street'),
@@ -286,6 +368,7 @@ async function main(): Promise<void> {
   };
 
   function setPaving(on: boolean): void {
+    if (on) dropWarbandTool();
     paving = on;
     btnPave.setAttribute('aria-pressed', String(on));
     view.clearGhost();
@@ -298,6 +381,7 @@ async function main(): Promise<void> {
   }
 
   function setRoadClass(cls: RoadClass | null): void {
+    if (cls) dropWarbandTool();
     roadClass = cls;
     roadPoints = [];
     view.clearGhost();
@@ -371,6 +455,11 @@ async function main(): Promise<void> {
 
     if (e.button !== 0) return;
     const w = camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection);
+
+    if (warbandTool) {
+      warbandClick(w);
+      return;
+    }
 
     if (plan) {
       if (world.applyPlan({ kind: plan, at: w, size: PLAN_SIZE, angle: planAngle })) {
@@ -459,7 +548,8 @@ async function main(): Promise<void> {
       return;
     }
     if (e.key === 'Escape') {
-      if (plan) setPlan(null);
+      if (warbandTool) setWarband(false);
+      else if (plan) setPlan(null);
       else if (terra) setTerra(null);
       else if (paving) setPaving(false);
       else if (roadClass) setRoadClass(null);
@@ -468,6 +558,7 @@ async function main(): Promise<void> {
     else if (e.key === 'c' || e.key === 'C') setOverlay(!view.showOverlay);
     else if (e.key === 's' || e.key === 'S') setStreets(!view.showStreets);
     else if (e.key === 'v' || e.key === 'V') setView(view.viewMode === 'iso' ? 'plan' : 'iso');
+    else if (e.key === 'w' || e.key === 'W') setWarband(!warbandTool);
     else if (e.code === 'Space') {
       e.preventDefault();
       setPaused(!paused);
@@ -492,6 +583,10 @@ async function main(): Promise<void> {
   const sFood = el('s-food');
   const rWhen = el('r-when');
   const rRival = el('r-rival');
+  const rHeld = el('r-held');
+  const rBands = el('r-bands');
+  const rUpkeep = el('r-upkeep');
+  const rConquest = el('r-conquest');
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
@@ -516,6 +611,17 @@ async function main(): Promise<void> {
     rWhen.classList.toggle('winter', season === 'winter');
     rRival.textContent = String(world.rivalBuilt);
 
+    const mine = world.military.bandsOf(0);
+    const theirs = world.military.bandsOf(1);
+    const starving = mine.filter((b) => !b.supplied).length;
+    rBands.textContent = mine.length + theirs.length === 0
+      ? '—'
+      : `${mine.length} v ${theirs.length}` + (starving ? ` · ${starving} starving` : '');
+    rBands.classList.toggle('low', starving > 0);
+    rUpkeep.textContent =
+      world.economy.upkeep > 0 ? `${world.economy.upkeep.toFixed(2)} food/tick` : '—';
+    rConquest.textContent = `${world.razed} · ${world.captured}`;
+
     rCount.textContent = String(world.buildings.length);
     rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;
     rPeople.textContent = String(world.crowd.people.length);
@@ -533,6 +639,11 @@ async function main(): Promise<void> {
       rTerrDetail.textContent =
         `coh ${pct(terr.coherence[0])}/${pct(terr.coherence[1])} · ` +
         `out ${terr.output[0].toFixed(0)}/${terr.output[1].toFixed(0)}`;
+      // Ground you are standing on but have not converted. A number that keeps
+      // climbing is the gilded cage of design/01 §5 forming.
+      rHeld.textContent =
+        terr.held[0] + terr.held[1] === 0 ? '—' : `${terr.held[0]} v ${terr.held[1]}`;
+      rHeld.classList.toggle('low', terr.held[0] > terr.cells[0] * 0.3);
       rTown.textContent = stats.cells
         ? `${Math.round(stats.mean * 100)}% over ${stats.cells}`
         : '—';

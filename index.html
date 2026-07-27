@@ -226,6 +226,9 @@
         <button id="toggle-borders" aria-pressed="false">Borders</button>
       </div>
       <div class="row">
+        <button id="tool-warband">Warbands</button>
+      </div>
+      <div class="row">
         <button id="seed-town">Seed test town</button>
         <button id="clear-town">Clear</button>
       </div>
@@ -247,6 +250,10 @@
         <div class="line"><span class="k">Town coherence</span><span id="r-town">—</span></div>
         <div class="line"><span class="k">Territory</span><span id="r-territory">—</span></div>
         <div class="line"><span class="k">Coh · output</span><span id="r-terrdetail">—</span></div>
+        <div class="line"><span class="k">Held (not yours)</span><span id="r-held">—</span></div>
+        <div class="line"><span class="k">Warbands</span><span id="r-bands">—</span></div>
+        <div class="line"><span class="k">Army upkeep</span><span id="r-upkeep">—</span></div>
+        <div class="line"><span class="k">Razed · taken</span><span id="r-conquest">0 · 0</span></div>
         <div class="line"><span class="k">Rival built</span><span id="r-rival">0</span></div>
         <div class="line"><span class="k">Render CPU</span><span id="r-render">—</span></div>
         <div class="line"><span class="k">Ticks</span><span id="r-ticks">0</span></div>
@@ -264,6 +271,11 @@
       re-derives as you go, so dam a valley and a lake forms behind it.
       <br /><b>Crescent / Square / Grid</b> lay out a composition — click to place,
       <kbd>[</kbd> <kbd>]</kbd> to rotate. Buildings then snap to its frontage.
+      <br /><b>Warbands</b> — click a keep to muster, click a column to select it,
+      click ground to march. Columns starve outside ground you have integrated, so
+      a banner that has gone grey is a column dying. Turn <b>Borders</b> on to see
+      the two pressures: a soft haze is culture, a hard bright line is soldiers,
+      and hatching is ground you hold but have not made yours.
     </div>
 
     <script type="module" src="/src/app/main.ts"></script>

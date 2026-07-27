@@ -11,8 +11,22 @@ export const WORLD_CELLS = 256;
 export const WORLD_SIZE = CELL_SIZE * WORLD_CELLS;
 
 /**
+ * Which settlement something belongs to. These live here rather than in
+ * `territory.ts` because military, culture and buildings all need them and none
+ * of those should have to depend on the others to say whose thing this is.
+ */
+export const OWNER_PLAYER = 0;
+export const OWNER_RIVAL = 1;
+export const OWNER_COUNT = 2;
+
+/**
  * District character (design/04). Qualitative, not a quality axis — none of these
  * is "better" than another. A place is coherent when one of them clearly dominates.
+ *
+ * `martial` was held back from the MVP catalogue on the grounds that nothing read
+ * it. Now that territory has a military half, a garrison quarter is a real place
+ * with its own architecture and its own housing, so it joins the palette on the
+ * same terms as the rest: not better, not worse, unmistakably something.
  */
 export const CHARACTERS = [
   'industrious',
@@ -21,6 +35,7 @@ export const CHARACTERS = [
   'rustic',
   'raucous',
   'verdant',
+  'martial',
 ] as const;
 
 export type Character = (typeof CHARACTERS)[number];
@@ -31,7 +46,26 @@ export function characterIndex(c: Character): number {
   return CHARACTERS.indexOf(c);
 }
 
-export type BuildingFamily = 'economic' | 'civic' | 'residential';
+export type BuildingFamily = 'economic' | 'civic' | 'residential' | 'military';
+
+/**
+ * What a building contributes to the military field (design/01 §2).
+ *
+ * Deliberately the opposite of a cultural emission in every property: it is
+ * *built* rather than earned, it arrives the moment the building does, it has a
+ * hard edge instead of a long tail, it costs food every tick forever, and it
+ * vanishes completely the instant the building does.
+ */
+export interface Garrison {
+  /** How hard it holds. Compared directly against the other side's. */
+  strength: number;
+  /** Metres of open ground it reaches. Tight — this is not culture. */
+  reach: number;
+  /** Food per tick, forever. Soldiers eat. */
+  upkeep: number;
+  /** Whether warbands can be raised here. */
+  musters?: boolean;
+}
 
 export interface Emission {
   character: Character;
@@ -58,6 +92,8 @@ export interface BuildingType {
   isEvolved?: boolean;
   /** What it costs to build. Absent means free — greens and the like. */
   cost?: { timber?: number; stone?: number; food?: number };
+  /** Military only: what it holds, how far, and what it eats. */
+  garrison?: Garrison;
 }
 
 export interface Building {
@@ -70,6 +106,15 @@ export interface Building {
   rotation: number;
   /** Ticks since placed — evolution needs a settling period. */
   age: number;
+  /**
+   * How far this building has drifted toward the *other* side, 0..1.
+   *
+   * Culture converts land, and land carries the buildings standing on it: sit
+   * inside somebody else's integrated ground long enough and the place becomes
+   * theirs, without a shot fired (design/01 §2, §4). Slow on purpose — this is
+   * the one mechanic that could snowball, so it has to be watchable.
+   */
+  drift?: number;
 }
 
 export interface FieldReading {

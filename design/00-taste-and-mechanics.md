@@ -346,12 +346,22 @@ cells of ground while the player went 4822 → 5203. Both grow; the player stays
 ahead by building faster. Stop building and that reverses, which is the whole
 point of putting it in.
 
-Two honest caveats. The rival still only *adds buildings* — it cannot take a
-building off you, so pressure is currently territorial only, and military
-pressure remains unbuilt. And the rates (build interval, food per household)
-were tuned against this container's ~3 ticks/sec, which is an artefact of
-software rendering rather than a real frame budget; they will need re-tuning on
-hardware with a GPU.
+**Outside, and faster: soldiers.** The military half of `01` is now built too, so
+the rival can do more than out-grow you — it fortifies, musters columns and
+marches them at whatever of yours is nearest, and a column standing on one of
+your watchtowers eventually throws it down. Buildings can also change hands
+without a shot, by cultural drift, which is the peacetime threat of `01` §4
+made literal.
+
+That completes Axis 7's recommendation as written: pressure from **time**
+(winter), from **outside** (a rival that grows), and now **from outside at
+speed** (soldiers, who arrive in days rather than years). None of it comes from
+the player's own arithmetic.
+
+One caveat worth keeping in view: the rates here (build interval, food per
+household) were tuned against this container's ~3 ticks/sec, which is an artefact
+of software rendering rather than a real frame budget. They will need re-tuning
+on hardware with a GPU.
 
 ---
 
@@ -382,6 +392,27 @@ and find out empirically where it breaks. Expected pressure points: warband
 engagement odds, and the two pressure fields at a contested border. If numbers
 have to be admitted, admit them *there* and nowhere else, and treat each one as a
 design failure to be re-attacked later rather than a normal UI element.
+
+#### Both predicted pressure points have now been built, and neither needed a number
+
+**The two fields at a contested border.** This was the one flagged as a real
+threat. It survives, and the reason is worth stating as a rule rather than a
+finding: **culture never draws a line, and the military never draws a gradient.**
+The fields are told apart by *edge*, not by hue — which is what lets them belong
+to the same side and still be read separately where they overlap. A filled
+military contour, which is what the first version drew, destroys this
+immediately. See `01` §10.
+
+**Warband engagement.** Also no numbers, and it needed none, because the reading
+is carried by the silhouette: **how many figures** is the column's strength,
+**which way the pennant points** is where it is going, and **a pennant gone grey
+and drooping** is a column out of supply and dying. There is nothing to click
+during a battle, because the decisions — where you built, whether you could
+afford an army, whether the ground would feed it — were all made beforehand.
+
+That is not a claim the experiment has succeeded. It is a claim that the two
+places it was expected to break are built and have not broken, judged by the
+person who built them and by nobody else.
 
 ### Pillar B — Evolution, not accretion
 

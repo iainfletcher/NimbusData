@@ -13,6 +13,7 @@ import {
   channelWidth,
   type Person,
   type Vec2,
+  type Warband,
   type World,
 } from '../sim';
 import { WORLD_SIZE } from '../sim';
@@ -21,7 +22,16 @@ import { Camera } from './camera';
 import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
 import { deriveFacade, type Panel } from './grammar';
 import { drawDecorItem, type DecorContext } from './decor';
-import { CHARACTER_COLOURS, FRONTIER_COLOUR, TERRITORY_COLOURS, shade, terrainColour, waterColour } from './palette';
+import {
+  BANNER_COLOURS,
+  CHARACTER_COLOURS,
+  CONTESTED_COLOUR,
+  FRONTIER_COLOUR,
+  TERRITORY_COLOURS,
+  shade,
+  terrainColour,
+  waterColour,
+} from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
 
 /** Terrain is drawn every Nth cell — 4m cells are finer than the eye needs here. */
@@ -82,6 +92,7 @@ export class WorldView {
   showStreets = true;
   showBorders = false;
   private borderVersion = -1;
+  private selectedBand: number | null = null;
 
   constructor(
     private world: World,
@@ -152,6 +163,11 @@ export class WorldView {
 
   markOverlayDirty(): void {
     this.overlayDirty = true;
+  }
+
+  /** Which warband the player has picked up, so it can be marked on the ground. */
+  setSelectedBand(id: number | null): void {
+    this.selectedBand = id;
   }
 
   private project(wx: number, wy: number, h: number): Point {
@@ -585,18 +601,31 @@ export class WorldView {
   }
 
   /**
-   * The border, drawn as two things at once (design/01 §6): a soft wash of
-   * whoever holds the ground, and a bright line where the two meet.
+   * The border, drawn as the two unlike fields it actually is (design/01 §6).
    *
-   * The wash is what makes the claim readable as *pressure* — it fades out
-   * rather than stopping, so you can see a town's reach as well as its edge.
-   * The line is what makes the frontier a thing you can watch move.
+   * This is the strongest test of Pillar A — "the map is the dashboard" — because
+   * two overlapping pressures at one frontier is precisely the case `01` §7 flags
+   * as a genuine unknown and a real threat to the no-numbers experiment. Four
+   * marks, each carrying one fact:
+   *
+   * - **Soft wash** — cultural claim. Fades out rather than stopping, so you read
+   *   a town's *reach* and not only its edge.
+   * - **Pale line** — where two cultures meet. A frontier you can watch move.
+   * - **Hatch** — ground merely *held*: inside a military contour that the wash
+   *   does not fill. The gap between the hard line and the haze is the gilded
+   *   cage, and it is visible without being labelled.
+   * - **Banner line** — the military contour. Near-white, one cell wide, hard.
+   *
+   * The two fields stay apart because they differ in *edge* rather than hue:
+   * culture never draws a line, and the military never draws a gradient.
    */
   private drawBorders(): void {
     const g = this.border;
     g.clear();
 
     const territory = this.world.territory;
+    const military = this.world.military;
+    const armed = military.anyPresence;
     const t = this.world.terrain;
     const step = 2;
     const s = CELL_SIZE * step;
@@ -605,9 +634,10 @@ export class WorldView {
       for (let cx = 0; cx < territory.width; cx += step) {
         const claim = territory.claim[cy * territory.width + cx];
         const strength = Math.abs(claim);
-        if (strength < 0.06) continue;
+        const holder = armed ? military.holderAtCell(cx, cy) : null;
+        const contested = armed && military.contestedAtCell(cx, cy);
+        if (strength < 0.06 && holder === null && !contested) continue;
 
-        const owner = claim > 0 ? 0 : 1;
         const wx = cx * CELL_SIZE;
         const wy = cy * CELL_SIZE;
 
@@ -615,23 +645,71 @@ export class WorldView {
         const p10 = this.project(wx + s, wy, t.heightAtCell(cx + step, cy));
         const p11 = this.project(wx + s, wy + s, t.heightAtCell(cx + step, cy + step));
         const p01 = this.project(wx, wy + s, t.heightAtCell(cx, cy + step));
+        const quad = [p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y];
 
-        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
-          color: TERRITORY_COLOURS[owner],
-          alpha: Math.min(0.42, 0.06 + strength * 0.4),
-        });
-
-        // Where the sign flips between neighbours, that is the frontier.
-        const east = territory.ownerAtCell(cx + step, cy);
-        const south = territory.ownerAtCell(cx, cy + step);
-        const here = territory.ownerAtCell(cx, cy);
-        if (here === null) continue;
-
-        if ((east !== null && east !== here) || (south !== null && south !== here)) {
-          g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
-            color: FRONTIER_COLOUR,
-            alpha: 0.5,
+        // 1. The cultural wash.
+        if (strength >= 0.06) {
+          g.poly(quad).fill({
+            color: TERRITORY_COLOURS[claim > 0 ? 0 : 1],
+            alpha: Math.min(0.42, 0.06 + strength * 0.4),
           });
+        }
+
+        // 2. Ground held but not converted, hatched on a coarse lattice so it
+        //    reads as occupation rather than as another wash.
+        const integrated = territory.integratedAtCell(cx, cy);
+        if (holder !== null && integrated !== holder) {
+          g.poly(quad).fill({ color: BANNER_COLOURS[holder], alpha: 0.07 });
+          if (((cx + cy) / step) % 3 === 0) {
+            g.moveTo(p01.x, p01.y)
+              .lineTo(p10.x, p10.y)
+              .stroke({ color: BANNER_COLOURS[holder], width: 0.7, alpha: 0.4 });
+          }
+        }
+
+        // 3. Where neither side can hold: soldiers are actually fighting here.
+        if (contested) {
+          g.poly(quad).fill({ color: CONTESTED_COLOUR, alpha: 0.3 });
+        }
+
+        // 4. The cultural frontier: pale, soft-edged, drawn as an area because
+        //    culture does not have a crisp edge and should not pretend to.
+        const here = territory.integratedAtCell(cx, cy);
+        if (here !== null) {
+          const east = territory.integratedAtCell(cx + step, cy);
+          const south = territory.integratedAtCell(cx, cy + step);
+          if ((east !== null && east !== here) || (south !== null && south !== here)) {
+            g.poly(quad).fill({ color: FRONTIER_COLOUR, alpha: 0.5 });
+          }
+        }
+
+        // 5. The military contour, stroked along the actual boundary between
+        //    cells rather than filled into them.
+        //
+        //    Filling was the first attempt and it was wrong: an 8m cell painted
+        //    solid reads as a wide ribbon laid over the landscape, close enough
+        //    to a road to be confusing, and it swamped the haze it is supposed
+        //    to be distinguishable from. `01` §6 asks for **a drawn line**, and
+        //    the difference between a line and a band turns out to be the whole
+        //    reason the two fields stay legible on top of each other.
+        if (holder !== null || armed) {
+          const east = military.holderAtCell(cx + step, cy);
+          const south = military.holderAtCell(cx, cy + step);
+
+          if (east !== holder) {
+            g.moveTo(p10.x, p10.y).lineTo(p11.x, p11.y).stroke({
+              color: edgeColour(holder, east),
+              width: 1.1,
+              alpha: 0.95,
+            });
+          }
+          if (south !== holder) {
+            g.moveTo(p01.x, p01.y).lineTo(p11.x, p11.y).stroke({
+              color: edgeColour(holder, south),
+              width: 1.1,
+              alpha: 0.95,
+            });
+          }
         }
       }
     }
@@ -690,15 +768,136 @@ export class WorldView {
     for (const b of this.dirtyPeopleBands) this.peopleBands[b].clear();
     this.dirtyPeopleBands.clear();
 
+    const plan = this.mode === 'plan';
+
+    // The selection marks are drawn into the ghost layer, which no other tool is
+    // touching while a column is picked up, so it is ours to clear each frame.
+    if (this.selectedBand !== null) this.ghost.clear();
+
+    // Warbands ride in the people layers because they move on the same cadence
+    // and have to sort against buildings the same way — a column marching behind
+    // a keep must go behind it.
+    for (const w of this.world.military.warbands) {
+      const band = depthBand(w.pos.x + w.pos.y);
+      this.dirtyPeopleBands.add(band);
+      this.drawWarband(this.peopleBands[band], w, plan);
+    }
+
     const people = this.world.crowd.people;
     if (people.length === 0) return;
 
-    const plan = this.mode === 'plan';
     for (const person of people) {
       const band = depthBand(person.pos.x + person.pos.y);
       this.dirtyPeopleBands.add(band);
       this.drawPerson(this.peopleBands[band], person, plan);
     }
+  }
+
+  /**
+   * A warband: a knot of figures under a banner (design/01 §6, "warband banners
+   * and bearing").
+   *
+   * Everything the player needs is in the silhouette, with no numbers anywhere:
+   * **how many figures** is its strength, **which way the pennant points** is
+   * where it is going, and **a pennant gone grey and drooping** is a column out
+   * of supply and dying — which is the moment the supply rule of `01` §3 becomes
+   * something you can see rather than something you were told.
+   */
+  private drawWarband(g: Graphics, w: Warband, plan: boolean): void {
+    const colour = BANNER_COLOURS[w.owner] ?? BANNER_COLOURS[0];
+    const ground = this.world.terrain.heightAt(w.pos.x, w.pos.y);
+    const base = this.project(w.pos.x, w.pos.y, ground);
+
+    // Selected, and where it has been told to go. The line to the target is the
+    // only bit of interface a column gets, and it disappears when it arrives.
+    if (w.id === this.selectedBand) {
+      const ring: number[] = [];
+      for (let i = 0; i <= 20; i++) {
+        const a = (i / 20) * Math.PI * 2;
+        const p = this.project(w.pos.x + Math.cos(a) * 9, w.pos.y + Math.sin(a) * 9, ground);
+        ring.push(p.x, p.y);
+      }
+      this.ghost.poly(ring).stroke({ color: colour, width: 0.6, alpha: 0.85 });
+
+      if (w.target) {
+        const to = this.projectOnGround(w.target);
+        this.ghost
+          .moveTo(base.x, base.y)
+          .lineTo(to.x, to.y)
+          .stroke({ color: colour, width: 0.4, alpha: 0.4 });
+        this.ghost.circle(to.x, to.y, 2).stroke({ color: colour, width: 0.5, alpha: 0.7 });
+      }
+    }
+
+    if (plan) {
+      // A chevron pointing the way it is marching; nothing else reads on a map.
+      const c = Math.cos(w.bearing);
+      const s = Math.sin(w.bearing);
+      const nose = this.project(w.pos.x + c * 7, w.pos.y + s * 7, ground);
+      const left = this.project(w.pos.x - c * 4 - s * 4, w.pos.y - s * 4 + c * 4, ground);
+      const right = this.project(w.pos.x - c * 4 + s * 4, w.pos.y - s * 4 - c * 4, ground);
+      g.poly([nose.x, nose.y, left.x, left.y, right.x, right.y]).fill({
+        color: colour,
+        alpha: 0.35 + w.strength * 0.6,
+      });
+      return;
+    }
+
+    // Strength is the size of the crowd, not a bar over its head.
+    const figures = 2 + Math.round(w.strength * 5);
+    g.ellipse(base.x, base.y, 6, 3).fill({ color: 0x2f3a2c, alpha: 0.26 });
+
+    for (let i = 0; i < figures; i++) {
+      // A fixed lattice offset by the band's id, so a column looks like a column
+      // rather than a shuffling cloud, and two columns never look identical.
+      const a = (i * 2.39996 + w.id) % (Math.PI * 2);
+      const r = 1.5 + (i % 3) * 1.5;
+      const fx = w.pos.x + Math.cos(a) * r;
+      const fy = w.pos.y + Math.sin(a) * r;
+      const fg = this.world.terrain.heightAt(fx, fy);
+      const foot = this.project(fx, fy, fg);
+      const head = this.project(fx, fy, fg + 3.3);
+      const shoulder = this.project(fx, fy, fg + 2.55);
+
+      g.poly([
+        foot.x - 0.46, foot.y,
+        foot.x + 0.46, foot.y,
+        shoulder.x + 0.6, shoulder.y,
+        shoulder.x - 0.6, shoulder.y,
+      ]).fill(SOLDIER);
+      g.circle(head.x, head.y, 0.66).fill(HELMET);
+    }
+
+    // The banner, and it is deliberately out of all scale — taller than the
+    // houses it passes. A column you have to hunt for is a column you will lose,
+    // and `01` §6 asks for the map itself to carry this, with no icon layer over
+    // the top of it. Toy cities are allowed enormous flags.
+    const poleFoot = this.project(w.pos.x, w.pos.y, ground);
+    const poleTop = this.project(w.pos.x, w.pos.y, ground + 14);
+    g.moveTo(poleFoot.x, poleFoot.y)
+      .lineTo(poleTop.x, poleTop.y)
+      .stroke({ color: 0x3b2f24, width: 0.75 });
+
+    // Out of supply, the pennant loses its colour and its lift. That single
+    // change is the whole supply system's user interface.
+    const fly = w.supplied ? 9 : 5;
+    const droop = w.supplied ? 0 : 3;
+    const tip = this.project(
+      w.pos.x + Math.cos(w.bearing) * fly,
+      w.pos.y + Math.sin(w.bearing) * fly,
+      ground + 12.4 - droop,
+    );
+    const heel = this.project(w.pos.x, w.pos.y, ground + 9.8);
+    g.poly([poleTop.x, poleTop.y, tip.x, tip.y, heel.x, heel.y]).fill({
+      color: w.supplied ? colour : 0x8a8579,
+      alpha: 0.55 + w.strength * 0.45,
+    });
+    // A dark edge, so a pale banner still reads against a pale field.
+    g.poly([poleTop.x, poleTop.y, tip.x, tip.y, heel.x, heel.y]).stroke({
+      color: 0x2a2620,
+      width: 0.3,
+      alpha: 0.55,
+    });
   }
 
   private drawPerson(g: Graphics, person: Person, plan: boolean): void {
@@ -1140,11 +1339,43 @@ export class WorldView {
       ]).fill({ color: shade(wall, sideOn ? -0.16 : -0.3), alpha });
     }
 
-    // A narrow stack is a chimney and stops here; a broad one gets its spire.
-    if (tower.width < 3.5) {
+    const crown = tower.crown ?? (tower.width < 3.5 ? 'flat' : 'spire');
+
+    if (crown === 'flat') {
       g.poly([
         cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
       ]).fill({ color: shade(wall, -0.4), alpha });
+      return;
+    }
+
+    if (crown === 'battlement') {
+      // The roof deck, then merlons around it. Notched, never pointed: this is
+      // the one silhouette in the game that says "fortification" on its own.
+      g.poly([
+        cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
+      ]).fill({ color: shade(wall, -0.42), alpha });
+
+      const merlonH = Math.max(1.1, tower.width * 0.22);
+      const segments = 5;
+
+      // Far edges first, so the near parapet reads in front of the deck.
+      for (const f of faces) {
+        const a = corners[f.i];
+        const c = corners[f.j];
+        for (let s = 0; s < segments; s += 2) {
+          const t0 = s / segments;
+          const t1 = (s + 1) / segments;
+          const q0 = { x: a.x + (c.x - a.x) * t0, y: a.y + (c.y - a.y) * t0 };
+          const q1 = { x: a.x + (c.x - a.x) * t1, y: a.y + (c.y - a.y) * t1 };
+          const b0 = this.project(q0.x, q0.y, topH);
+          const b1 = this.project(q1.x, q1.y, topH);
+          const t0p = this.project(q0.x, q0.y, topH + merlonH);
+          const t1p = this.project(q1.x, q1.y, topH + merlonH);
+          g.poly([
+            t0p.x, t0p.y, t1p.x, t1p.y, b1.x, b1.y, b0.x, b0.y,
+          ]).fill({ color: shade(wall, -0.1), alpha });
+        }
+      }
       return;
     }
 
@@ -1288,8 +1519,21 @@ function depthBand(depth: number): number {
 }
 
 /** Muted working clothes: madder, woad, undyed wool, russet. */
+/**
+ * The colour of a military boundary between two cells. Two sides pressing
+ * against each other is not a border at all — it is a battle line, and it gets
+ * the alarm colour rather than either banner.
+ */
+function edgeColour(a: number | null, b: number | null): number {
+  if (a !== null && b !== null) return CONTESTED_COLOUR;
+  return BANNER_COLOURS[(a ?? b) as number];
+}
+
 const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
+/** Soldiers are drab and identical; the banner is what carries the colour. */
+const SOLDIER = 0x4c4a44;
+const HELMET = 0x9aa0a6;
 
 /**
  * Offset a centreline to both kerbs, mitring at each vertex.

@@ -15,6 +15,9 @@ export const CHARACTER_COLOURS: Record<Character, number> = {
   rustic: 0x8a9a4a, // olive and stubble
   raucous: 0xc2456b, // rose, lamplight
   verdant: 0x4f9e63, // leaf
+  // Iron and cold ash. The only unsaturated entry in the palette, which is how
+  // it stays distinct from devout's blue-grey stone at a glance.
+  martial: 0x4e545e,
 };
 
 export const CHARACTER_LABELS: Record<Character, string> = {
@@ -24,6 +27,7 @@ export const CHARACTER_LABELS: Record<Character, string> = {
   rustic: 'Rustic',
   raucous: 'Raucous',
   verdant: 'Verdant',
+  martial: 'Martial',
 };
 
 export const TERRAIN = {
@@ -75,3 +79,22 @@ export function waterColour(depth: number): number {
  */
 export const TERRITORY_COLOURS = [0xe0a23c, 0x6f8fd0];
 export const FRONTIER_COLOUR = 0xfaf0d8;
+
+/**
+ * Military colours, and the reason they are a separate set (design/01 §6).
+ *
+ * The two fields have to be told apart *while overlapping*, which is the design's
+ * own §7 risk 3 and the hardest thing to get right in the whole visual language.
+ * Hue alone cannot do it, because both belong to the same side and must read as
+ * the same side. So the distinction is carried by **value and edge**: culture is
+ * a low-contrast wash with a long gradient; banner colours are near-white,
+ * high-contrast, and only ever drawn as a hard one-cell line.
+ *
+ * The result is the reading `01` §6 asks for: a bright drawn contour enclosing
+ * ground the warm haze does not fill says *we are standing here, but this isn't
+ * ours* — wordlessly, with no numbers, at any zoom.
+ */
+export const BANNER_COLOURS = [0xffdb8a, 0xa8c8ff];
+
+/** Where neither side can hold: a battle line. Neither banner, and alarming. */
+export const CONTESTED_COLOUR = 0xff7a4d;

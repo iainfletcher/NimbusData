@@ -3,7 +3,15 @@ import type { Conductance } from './conductance';
 import type { CharacterField } from './field';
 import { COHERENCE_THRESHOLD } from './field';
 import { GeodesicFlood } from './flood';
-import { CELL_SIZE, WORLD_CELLS, type Building } from './types';
+import type { Military } from './military';
+import {
+  CELL_SIZE,
+  OWNER_COUNT,
+  OWNER_PLAYER,
+  OWNER_RIVAL,
+  WORLD_CELLS,
+  type Building,
+} from './types';
 
 /**
  * Cultural pressure and the border (design/01).
@@ -29,9 +37,22 @@ import { CELL_SIZE, WORLD_CELLS, type Building } from './types';
  * of a valley belong to different people.
  */
 
-export const OWNER_PLAYER = 0;
-export const OWNER_RIVAL = 1;
-export const OWNER_COUNT = 2;
+export { OWNER_PLAYER, OWNER_RIVAL, OWNER_COUNT };
+
+/**
+ * The two states territory can be in (design/01 §3), and the reason the two
+ * fields make a strategy rather than a pair of overlays.
+ *
+ * - **Held** — inside somebody's military contour, culture below threshold. It
+ *   costs upkeep, it does not grow, and it leaves the moment the soldiers do.
+ * - **Integrated** — culture above threshold. Genuinely theirs; the garrison can
+ *   be withdrawn and the land stays.
+ *
+ * Getting from one to the other takes time *and* a town worth radiating from,
+ * which is the anti-snowball mechanism: blitzing wins a wide, sullen, expensive
+ * empire that produces almost nothing.
+ */
+export type Standing = 'open' | 'held' | 'integrated' | 'contested';
 
 /**
  * How far culture reaches, in metres of open ground, per unit of output.
@@ -58,6 +79,12 @@ const CLAIMED_THRESHOLD = 0.12;
 export interface TerritoryStats {
   /** Cells held, per owner. */
   cells: number[];
+  /**
+   * Of those, how many are merely *held* — inside a military contour that
+   * culture has not filled. A big gap between `cells` and `cells - held` is the
+   * gilded cage of `01` §5, and it is the number that says an empire is sullen.
+   */
+  held: number[];
   /** Length of the contested frontier, in cells. */
   frontier: number;
   /**
@@ -86,6 +113,13 @@ export class Territory {
 
   private flood = new GeodesicFlood();
 
+  /**
+   * The military field, once there is one. Territory owns the *reading* of it
+   * rather than the field itself, because "who holds this ground" and "whose
+   * ground is this" are the same question asked of two different systems.
+   */
+  private military: Military | null = null;
+
   constructor() {
     const n = this.width * this.height;
     for (let i = 0; i < OWNER_COUNT; i++) this.pressure.push(new Float32Array(n));
@@ -101,7 +135,9 @@ export class Territory {
     field: CharacterField,
     conductance: Conductance,
     steps = 1,
+    military: Military | null = null,
   ): void {
+    this.military = military;
     for (const layer of this.pressure) layer.fill(0);
 
     for (const b of buildings) {
@@ -124,36 +160,107 @@ export class Territory {
     this.settle(steps);
   }
 
-  /** Move the claim toward the current balance of pressure. */
+  /**
+   * Move the claim toward the current balance of pressure.
+   *
+   * The one place the military field reaches into this one: **culture cannot
+   * take ground that is actively defended** (`01` §2, §7 risk 4). Inside
+   * somebody's military contour, only their culture is allowed to count, so a
+   * border physically cannot drift through a garrisoned zone however lovely the
+   * town on the other side is.
+   *
+   * Note what this does *not* do. It does not push the claim toward the holder;
+   * it only stops the opponent's. Hold ground with soldiers and nothing happens
+   * culturally at all — you have frozen it, not won it, and it stays frozen for
+   * exactly as long as you keep paying. That is the difference between taking
+   * and converting, expressed as three lines of arithmetic.
+   */
   private settle(steps: number): void {
     const player = this.pressure[OWNER_PLAYER];
     const rival = this.pressure[OWNER_RIVAL];
     const rate = 1 - (1 - CLAIM_RATE) ** steps;
+    const military = this.military;
 
     for (let i = 0; i < this.claim.length; i++) {
-      const total = player[i] + rival[i];
+      let p = player[i];
+      let r = rival[i];
+
+      if (military) {
+        const holder =
+          military.holderAtCell(i % this.width, (i / this.width) | 0);
+        if (holder === OWNER_PLAYER) r = 0;
+        else if (holder === OWNER_RIVAL) p = 0;
+      }
+
+      const total = p + r;
       // Normalised balance: who is stronger here, and by how much of the total.
-      const target = total > 1e-4 ? (player[i] - rival[i]) / total : 0;
+      const target = total > 1e-4 ? (p - r) / total : 0;
       // Faint pressure should not claim ground outright, so scale by presence.
       const presence = Math.min(1, total / 0.35);
       this.claim[i] += (target * presence - this.claim[i]) * rate;
     }
   }
 
-  /** Which owner holds a cell, or null for open country. */
-  ownerAtCell(cx: number, cy: number): number | null {
+  /**
+   * Whose culture has actually taken a cell, ignoring soldiers entirely.
+   *
+   * This is the one that matters for everything that makes a place *work*:
+   * buildings only evolve on integrated ground, production is only full there,
+   * and supply runs from it alone. Ground you merely hold answers `null` here,
+   * which is what gives the gilded cage its teeth.
+   */
+  integratedAtCell(cx: number, cy: number): number | null {
     if (cx < 0 || cy < 0 || cx >= this.width || cy >= this.height) return null;
     const v = this.claim[cy * this.width + cx];
     if (Math.abs(v) < CLAIMED_THRESHOLD) return null;
     return v > 0 ? OWNER_PLAYER : OWNER_RIVAL;
   }
 
+  integratedAt(wx: number, wy: number): number | null {
+    return this.integratedAtCell(Math.floor(wx / CELL_SIZE), Math.floor(wy / CELL_SIZE));
+  }
+
+  /**
+   * Which owner controls a cell for map purposes: soldiers first, then culture.
+   *
+   * Military wins the tie because it is the only thing that can take ground
+   * somebody else is defending. It is also the only claim that disappears the
+   * same tick its source does.
+   */
+  ownerAtCell(cx: number, cy: number): number | null {
+    const holder = this.military?.holderAtCell(cx, cy) ?? null;
+    if (holder !== null) return holder;
+    return this.integratedAtCell(cx, cy);
+  }
+
   ownerAt(wx: number, wy: number): number | null {
     return this.ownerAtCell(Math.floor(wx / CELL_SIZE), Math.floor(wy / CELL_SIZE));
   }
 
+  /** The full story for a cell: open, contested, merely held, or genuinely theirs. */
+  standingAtCell(cx: number, cy: number): { owner: number | null; standing: Standing } {
+    if (this.military?.contestedAtCell(cx, cy)) {
+      return { owner: null, standing: 'contested' };
+    }
+
+    const integrated = this.integratedAtCell(cx, cy);
+    const holder = this.military?.holderAtCell(cx, cy) ?? null;
+
+    if (integrated !== null && (holder === null || holder === integrated)) {
+      return { owner: integrated, standing: 'integrated' };
+    }
+    if (holder !== null) return { owner: holder, standing: 'held' };
+    if (integrated !== null) return { owner: integrated, standing: 'integrated' };
+    return { owner: null, standing: 'open' };
+  }
+
+  standingAt(wx: number, wy: number): { owner: number | null; standing: Standing } {
+    return this.standingAtCell(Math.floor(wx / CELL_SIZE), Math.floor(wy / CELL_SIZE));
+  }
+
   stats(buildings?: readonly Building[], field?: CharacterField): TerritoryStats {
     const cells = new Array(OWNER_COUNT).fill(0);
+    const held = new Array(OWNER_COUNT).fill(0);
     const coherence = new Array(OWNER_COUNT).fill(0);
     const output = new Array(OWNER_COUNT).fill(0);
     const counts = new Array(OWNER_COUNT).fill(0);
@@ -174,9 +281,10 @@ export class Territory {
 
     for (let cy = 0; cy < this.height; cy++) {
       for (let cx = 0; cx < this.width; cx++) {
-        const owner = this.ownerAtCell(cx, cy);
+        const { owner, standing } = this.standingAtCell(cx, cy);
         if (owner === null) continue;
         cells[owner]++;
+        if (standing === 'held') held[owner]++;
 
         // A frontier cell is one whose neighbour belongs to somebody else.
         const right = this.ownerAtCell(cx + 1, cy);
@@ -187,7 +295,7 @@ export class Territory {
       }
     }
 
-    return { cells, frontier, coherence, output };
+    return { cells, held, frontier, coherence, output };
   }
 }
 
@@ -219,10 +327,20 @@ function culturalOutput(b: Building, field: CharacterField): number {
   const clarity = above <= 0 ? Math.max(0, reading.coherence) * 0.12 : above ** 1.6;
 
   const base =
-    type.family === 'civic' ? 1.0 : type.family === 'economic' ? 0.62 : 0.34;
+    type.family === 'civic'
+      ? 1.0
+      : type.family === 'military'
+        ? 0.7
+        : type.family === 'economic'
+          ? 0.62
+          : 0.34;
 
-  // Landmarks carry further; a church is visible from the next parish.
-  const landmark = type.id === 'church' || type.id === 'market' ? 1.7 : 1;
+  // Landmarks carry further; a church is visible from the next parish, and so
+  // is a keep. Note what this means: a garrison town is a real culture, not an
+  // absence of one — it simply radiates *martial*, and a coherent martial
+  // quarter converts ground exactly as a coherent devout one does.
+  const landmark =
+    type.id === 'church' || type.id === 'market' || type.id === 'keep' ? 1.7 : 1;
 
   // Standing a long while counts for something.
   const age = Math.min(1.35, 1 + b.age / 4000);

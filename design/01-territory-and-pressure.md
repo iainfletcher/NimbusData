@@ -259,3 +259,117 @@ If watching a well-built town silently push its border into a neglected one is
 satisfying and legible — with no war, no units, and no numbers — then the pillar
 holds and everything else can be built on it. If that isn't fun, nothing further
 up the stack will save it.
+
+## 10. Built — the military half, and what testing it actually found
+
+The other half of the lead pillar now exists (`src/sim/military.ts`). Everything
+in §2's table is implemented as a genuine opposite of the cultural field: sources
+are discrete and built, onset is immediate, falloff is a hard edge, upkeep is
+food per tick forever, and the whole field is recomputed rather than settled — so
+losing the last tower on a frontier loses the frontier the same tick.
+
+With it: held vs integrated (§3), supply from integrated ground only, warbands
+that march, starve, fight and besiege, buildings that change hands by cultural
+drift (§2's "converts"), and a rival that plays all of it back at you.
+
+### The methodological change that matters more than any of it
+
+`src/sim` has always been engine-agnostic by contract, and nobody had collected
+the payoff: **it runs in plain Node with no browser and no Pixi.** So
+`npm run trial` now states each claim in this document, runs it, and prints what
+happened. Eleven of them.
+
+That is a different standard of evidence from a screenshot, and it earned its
+keep immediately — **six of the eleven failed the first time, and three of those
+were the design being wrong rather than the code.**
+
+### What the trials found
+
+**1. The rival fortified on a vibe, and it was unbeatable.** A watchtower emits
+`martial` strongly, so the moment one exists the dominant character around it is
+martial — and the rival's rule of *reinforce the dominant character* then means
+build more fortifications, which emit more martial. One tower snowballed into a
+fortress town that out-garrisoned a besieging column indefinitely, for free. The
+fix is a rule worth keeping: **the rival fortifies on a policy, never on a
+vibe.** Walls come from a rationed budget; everything else follows the field.
+
+**2. "Held" turned out to be two states, not one.** §3 says held ground does not
+evolve. But a keep *radiates martial culture as well as holding ground*, so
+within a couple of hundred ticks its own contour stops being merely held and
+becomes ground its owner has genuinely integrated. A foreign building standing
+there is then on integrated ground — and would have started flourishing again.
+The rule had to be restated: **a building only flourishes on ground its own side
+has made theirs.** That covers held ground, enemy ground and contested ground in
+one line, and open country still grows normally, which is where every town
+starts.
+
+**3. Military collapses instantly; culture does not, and I conflated them.** The
+first version of the collapse trial measured total territory and failed: pulling
+the tower down dropped the military hold from 2,717 cells to **zero in a single
+update**, exactly as §2 demands, while the cultural claim the tower had built up
+lingered — also exactly as §2 demands. Both behaviours were right. The
+*measurement* was wrong, and it is worth recording that the hysteresis asymmetry
+is strong enough to catch out the person who wrote it.
+
+**4. A garrison's reach is geodesic, so a keep's radius is a terrain decision.**
+Nominal reach is 235m of open ground; on broken ground it shrinks to well under a
+hundred. A trial that placed a hamlet 60m from a keep found most of it standing
+*outside* the contour. This is good — siting a fortress is a question about the
+land, like siting a mill — but it means nominal radii mislead.
+
+### The numbers
+
+| Claim | Measured |
+|---|---|
+| The gilded cage (§3, §5) | Producers on open ground yield **1.164/tick**; the same three inside a hostile contour yield **0.694** |
+| Neglect has a territorial cost (§4) | A player who stops building watches the rival's share of claimed ground go **38% → 46%** over 900 ticks |
+| Instant collapse (§2) | **2,717 held cells → 0** in one update |
+| Combat | The stronger column survives at 0.55 strength; the weaker disbands |
+
+### §7 risk 3 — "two overlapping fields may be hard to read" — answered
+
+This was flagged as a genuine unknown and a real threat to Pillar A. The answer
+is that it works, and **the reason it works is not hue.**
+
+The first attempt drew the military contour by filling boundary cells. An 8m cell
+painted solid reads as a wide ribbon laid over the landscape — close enough to a
+road to be confusing — and it swamped the very haze it was supposed to be
+distinguishable from. Stroking the actual boundary between cells fixed it
+completely.
+
+> **Culture never draws a line; the military never draws a gradient.** The two
+> fields are told apart by *edge*, not by colour, which is what lets them belong
+> to the same side and still be read separately where they overlap.
+
+With that, §6's key reading works wordlessly: a bright drawn contour enclosing
+ground the warm haze does not fill says *we are standing here, but this isn't
+ours*. Hatching inside it makes the occupation explicit rather than inferred, and
+where two contours meet they turn an alarm colour, because that is a battle line
+and not a border.
+
+Architecture followed the same principle: fortifications are the only silhouette
+in the game with a **notched** top. A keep that finished in a spire — which is
+what the first version drew, because every previous landmark was a church — reads
+as a cathedral.
+
+### One thing that fell out rather than being designed
+
+Warbands route by flooding the same cost field culture travels on. Roads are
+cheap in that field, so **armies march on roads** without a line of code saying
+so. That was not intended and it is the right behaviour.
+
+### Honest limits
+
+- **Combat is one rule.** Columns in contact wear each other down in proportion
+  to the other's strength — Lanchester attrition, chosen because it needs no
+  numbers on screen and because the decisions were all made beforehand: where you
+  built, whether you could afford an army, whether your ground would feed it.
+  Whether that is *enough* game is untested by anything but me.
+- **The rival's soldiers are not clever.** It musters on a fixed clock and marches
+  at whatever of yours is nearest. Deliberate: a cleverer opponent would make a
+  moving border tell you about the AI rather than about your town.
+- **§8's warning still stands.** Coherence carries almost the whole cultural load,
+  and it is a weak discriminator. Age, size and amenity mix should share it. The
+  military half does not fix that and was never going to.
+- **No human has played this.** Everything above is measurement and judgement.
+

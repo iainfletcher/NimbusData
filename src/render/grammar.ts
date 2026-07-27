@@ -114,6 +114,18 @@ const RULES: Record<Character, FacadeRule> = {
     blankChance: 0.16,
     loft: 0,
   },
+  // Mostly wall. Wide bays, tall storeys and very few openings, high up — the
+  // grammar of a building whose facade is a defence rather than a frontage.
+  // Nothing else in the palette leaves two thirds of a wall blank, so a
+  // fortified quarter is legible from further away than any other.
+  martial: {
+    bayWidth: 4.6,
+    storeyHeight: 4.8,
+    ground: ['blank', 'blank', 'door'],
+    upper: ['arched', 'blank', 'blank'],
+    blankChance: 0.62,
+    loft: 0,
+  },
 };
 
 const DEFAULT_RULE: FacadeRule = RULES.rustic;

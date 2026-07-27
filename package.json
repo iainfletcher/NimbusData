@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "check:layers": "node scripts/check-layers.mjs",
     "check": "npm run check:layers && npm run typecheck",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "trial": "node scripts/trial.mjs"
   },
   "repository": {
     "type": "git",

@@ -1,10 +1,14 @@
 import type { BuildingType } from './types';
 
 /**
- * MVP catalogue (design/06 §3). Medieval era only, six characters, three families.
+ * MVP catalogue (design/06 §3). Medieval era only, seven characters, four
+ * families.
  *
- * The military family is deliberately absent: it would need a seventh character
- * (martial) that nothing else in the MVP reads, and territory is out of scope.
+ * The military family was originally left out on the grounds that it would need
+ * a seventh character nothing else read, and that territory was out of scope.
+ * Both reasons have expired: territory is the lead pillar and now has a military
+ * half, so garrisons are here, they emit `martial`, and a garrison quarter grows
+ * its own housing like every other quarter does.
  *
  * Emission strengths are on an arbitrary shared scale — what matters is their
  * ratio to each other, since coherence is a share rather than a magnitude.
@@ -179,6 +183,32 @@ const TYPES: BuildingType[] = [
     cost: { timber: 4 },
   },
 
+  // ---- Military ----------------------------------------------------------
+  //
+  // Two sources, deliberately not a ladder: a watchtower is a cheap way to hold
+  // a specific piece of ground, a keep is expensive, holds far more, and is the
+  // only place a warband can be raised. Both eat forever (design/01 §2).
+  {
+    id: 'watchtower',
+    name: 'Watchtower',
+    family: 'military',
+    width: 8,
+    depth: 8,
+    emissions: [{ character: 'martial', strength: 0.9, radius: 75 }],
+    cost: { timber: 18, stone: 40 },
+    garrison: { strength: 0.85, reach: 130, upkeep: 0.05 },
+  },
+  {
+    id: 'keep',
+    name: 'Keep',
+    family: 'military',
+    width: 20,
+    depth: 20,
+    emissions: [{ character: 'martial', strength: 1.8, radius: 140 }],
+    cost: { timber: 45, stone: 130 },
+    garrison: { strength: 1.5, reach: 235, upkeep: 0.16, musters: true },
+  },
+
   // ---- Residential -------------------------------------------------------
   {
     id: 'cottage',
@@ -195,7 +225,17 @@ const TYPES: BuildingType[] = [
       rustic: 'farmhouse',
       raucous: 'lodging_house',
       verdant: 'garden_cottage',
+      martial: 'barrack_row',
     },
+  },
+  {
+    id: 'barrack_row',
+    name: 'Barrack Row',
+    family: 'residential',
+    width: 22,
+    depth: 8,
+    isEvolved: true,
+    emissions: [{ character: 'martial', strength: 0.3, radius: 40 }],
   },
   {
     id: 'terrace',

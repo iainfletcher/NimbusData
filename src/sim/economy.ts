@@ -1,8 +1,10 @@
 import { buildingType } from './buildings';
 import { harvestable, type Land } from './land';
+import { garrisonUpkeep, WARBAND_UPKEEP } from './military';
 import type { Terrain } from './terrain';
-import type { Building } from './types';
+import { OWNER_PLAYER, type Building } from './types';
 import type { SeasonEffects } from './calendar';
+import type { Standing } from './territory';
 
 /**
  * A deliberately light resource layer (design/00, Axis 3).
@@ -41,10 +43,29 @@ const FOOD_RATE = 0.0062;
 /** A household eats this much per tick. */
 const FOOD_PER_HOUSEHOLD = 0.042;
 
+/**
+ * What a producer yields on ground that is merely *held* — inside your military
+ * contour but not culturally yours (design/01 §3).
+ *
+ * This is the unrest penalty, and it is the whole reason conquest is not free.
+ * A seized province works at a third until you make it somewhere people want to
+ * be, so a wide empire taken quickly is a wide empire that produces almost
+ * nothing and bleeds garrison upkeep the entire time.
+ */
+const HELD_YIELD = 0.34;
+
+export interface Standings {
+  /** Where a building stands, in territorial terms. */
+  standingAt(wx: number, wy: number): { owner: number | null; standing: Standing };
+}
+
 export class Economy {
   readonly stocks: Stocks = { timber: 120, stone: 80, food: 100 };
   /** Net change per tick, kept for the readout so the trend is visible. */
   readonly rates: Stocks = { timber: 0, stone: 0, food: 0 };
+
+  /** What the army is costing, kept separate so the bill is legible. */
+  upkeep = 0;
 
   /** True when food ran out — growth stops until it doesn't. */
   hungry = false;
@@ -54,6 +75,8 @@ export class Economy {
     land: Land,
     terrain: Terrain,
     season: SeasonEffects = { harvest: 1, labour: 1, appetite: 1 },
+    warbands = 0,
+    territory: Standings | null = null,
   ): void {
     let timber = 0;
     let stone = 0;
@@ -61,24 +84,32 @@ export class Economy {
     let households = 0;
 
     for (const b of buildings) {
+      if (b.owner !== OWNER_PLAYER) continue;
       const type = buildingType(b.typeId);
 
       if (type.family === 'residential') households++;
 
+      // Sullen ground works badly. Nothing is destroyed and nothing is
+      // forbidden — it simply does not pay, which is a thing you can see on
+      // the map rather than a rule you have to be told.
+      const here = territory?.standingAt(b.pos.x, b.pos.y);
+      const yield_ = here?.standing === 'held' ? HELD_YIELD : 1;
+
       switch (type.id) {
         case 'sawmill':
-          timber += harvestable(land.timber, b.pos, CATCHMENT) * TIMBER_RATE;
+          timber += harvestable(land.timber, b.pos, CATCHMENT) * TIMBER_RATE * yield_;
           break;
         case 'quarry':
-          stone += harvestable(land.stone, b.pos, CATCHMENT) * STONE_RATE;
+          stone += harvestable(land.stone, b.pos, CATCHMENT) * STONE_RATE * yield_;
           break;
         case 'farm':
-          food += harvestable(land.arable, b.pos, CATCHMENT) * FOOD_RATE;
+          food += harvestable(land.arable, b.pos, CATCHMENT) * FOOD_RATE * yield_;
           break;
         case 'watermill':
           // A mill grinds what the river gives it, which is the payoff for the
           // hydrology: flow and fall are a real siting constraint (design/07 §4).
-          food += Math.min(2.4, terrain.millPotentialAt(b.pos.x, b.pos.y)) * 0.09;
+          food +=
+            Math.min(2.4, terrain.millPotentialAt(b.pos.x, b.pos.y)) * 0.09 * yield_;
           break;
       }
     }
@@ -90,9 +121,15 @@ export class Economy {
     food *= season.harvest;
     const eaten = households * FOOD_PER_HOUSEHOLD * season.appetite;
 
+    // The standing army. Continuous, never repaid, and unaffected by the
+    // season — the one bill that does not care whether the harvest came in.
+    this.upkeep =
+      (garrisonUpkeep(buildings, OWNER_PLAYER) + warbands * WARBAND_UPKEEP) *
+      season.appetite;
+
     this.rates.timber = timber;
     this.rates.stone = stone;
-    this.rates.food = food - eaten;
+    this.rates.food = food - eaten - this.upkeep;
 
     this.stocks.timber = Math.min(9999, this.stocks.timber + timber);
     this.stocks.stone = Math.min(9999, this.stocks.stone + stone);

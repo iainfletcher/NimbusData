@@ -18,12 +18,20 @@ npm run dev        # vite dev server
 
 ```bash
 npm run check      # layer check + typecheck. Run before committing
+npm run trial      # headless trials of the design's claims. Run before committing
 npm run build      # single self-contained dist/index.html
 npm run smoke      # loads the build in Chromium, screenshots to shots/
 ```
 
 `npm run check:layers` enforces the rule from `ARCHITECTURE.md`: `src/sim` may not
 import a rendering library, touch the DOM, or call `Math.random`.
+
+`npm run trial` collects the payoff from that rule. Because the simulation core
+depends on nothing outside itself, it compiles and runs in plain Node — so each
+claim in the design documents can be **stated, run and measured** rather than
+eyeballed in a screenshot. Every trial names the section it is checking and
+prints what actually happened. Several have contradicted the documents, which is
+the point of having them; see `design/01` §10.
 
 ## Current state
 
@@ -63,9 +71,16 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - A rival that actually grows, building toward the frontier and reinforcing its
   own character, with no rubber band
 
-**Not yet built:** military pressure and combat — the rival can take ground but
-cannot take a building; planned-fabric amplification (`design/05` §3); anything
-beyond the medieval era.
+- The military half of the lead pillar (`design/01`): watchtowers and keeps that
+  hold ground the moment they stand and lose it the moment they fall; held vs
+  integrated territory, with the production and growth penalties that make a
+  seized province a gilded cage; warbands that march on roads, starve outside
+  supply, fight, and throw down enemy fortifications; buildings that change hands
+  by cultural drift; and a rival that plays all of it back at you
+
+**Not yet built:** planned-fabric amplification (`design/05` §3); broadening
+cultural output beyond coherence (`design/01` §8); anything beyond the medieval
+era.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

@@ -25,8 +25,16 @@ export interface Appearance {
   rise: number;
   /** True when the ridge runs along the building's width rather than its depth. */
   ridgeAlongWidth: boolean;
-  /** A spire or bell tower at one end — landmarks only. */
-  tower?: { height: number; width: number };
+  /**
+   * A spire, stack or turret at one end — landmarks only.
+   *
+   * `crown` says how it finishes. Left off, a narrow stack caps flat like a
+   * chimney and a broad one takes a spire, which was right while every landmark
+   * was a church or a foundry. A fortification is neither: it wants
+   * **battlements**, and a keep that finishes in a spire reads as a cathedral,
+   * which is exactly what the first version looked like.
+   */
+  tower?: { height: number; width: number; crown?: 'spire' | 'flat' | 'battlement' };
   /** Exposed timber frame on the walls. */
   framed?: boolean;
   /** Dormer windows in the roof slope. */
@@ -49,6 +57,10 @@ const MATERIALS: Record<Character, { wall: number; roof: number }> = {
   raucous: { wall: 0xb2856b, roof: 0x8d564a },
   // Pale weatherboard among planting.
   verdant: { wall: 0xa9ac8f, roof: 0x6f7a5c },
+  // Undressed grey rubble under dark slate. Deliberately the coldest, hardest
+  // material in the set: a garrison quarter should look like it was built to
+  // keep weather and people out, not to be lived in.
+  martial: { wall: 0x8b8b86, roof: 0x3f434a },
 };
 
 /** Vegetation, for the things that aren't really buildings. */
@@ -83,6 +95,25 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   warehouse: { eaves: 8, rise: 2, overhang: 0.4 },
   watermill: { eaves: 7, rise: 3.5, framed: true, overhang: 0.7 },
   farm: { eaves: 5.5, rise: 4, framed: true, overhang: 0.8 },
+
+  // Fortification: tall, blunt, and topped rather than roofed. The crenellated
+  // crown is what reads as a fortification from right across the valley, and it
+  // is the only silhouette in the game with a notched top.
+  watchtower: {
+    eaves: 14,
+    rise: 0,
+    form: 'flat',
+    tower: { height: 3.6, width: 6.6, crown: 'battlement' },
+    overhang: 0.85,
+  },
+  keep: {
+    eaves: 17,
+    rise: 0,
+    form: 'flat',
+    tower: { height: 5.5, width: 7.4, crown: 'battlement' },
+    overhang: 1.1,
+  },
+  barrack_row: { eaves: 5.6, rise: 2, ridgeAlongWidth: true, overhang: 0.3 },
 
   // Not buildings: ground cover with no roof to speak of.
   green: { form: 'flat', eaves: 0.4, rise: 0, wall: FOLIAGE.wall, roof: FOLIAGE.roof },

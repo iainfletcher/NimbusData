@@ -12,6 +12,20 @@ Godot or a native engine is a *rendering* rewrite, not a rewrite.
 This is enforced, not merely intended: `npm run check:layers` fails the build if
 anything under `src/sim` imports across the boundary.
 
+### The payoff, which is bigger than portability
+
+Because the core depends on nothing outside itself, **it runs in plain Node with
+no browser, no canvas and no Pixi**. `npm run trial` compiles `src/sim` on its
+own and exercises it headlessly, so a claim in a design document can be stated,
+run and measured instead of eyeballed in a screenshot.
+
+That turned out to be worth more than the engine portability the rule was written
+for. The first run of the military trials failed six of eleven claims, and three
+of those were the *design* being wrong rather than the code (`design/01` §10).
+Compiling the layer in isolation is also the strictest possible check that the
+boundary is intact: if the trial harness stops compiling, the rule has been
+broken somewhere the import scanner missed.
+
 ## Layers
 
 ```
