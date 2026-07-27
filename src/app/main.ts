@@ -59,6 +59,7 @@ async function main(): Promise<void> {
   camera.zoom = 2.4;
 
   let selectedType: string | null = null;
+  let paving = false;
   let roadClass: RoadClass | null = null;
   let roadPoints: Vec2[] = [];
   let paused = false;
@@ -125,7 +126,11 @@ async function main(): Promise<void> {
   }
 
   function selectType(id: string | null): void {
-    if (id) setRoadClass(null);
+    if (id) {
+      setRoadClass(null);
+      paving = false;
+      btnPave?.setAttribute('aria-pressed', 'false');
+    }
     selectedType = selectedType === id ? null : id;
     for (const [typeId, btn] of itemButtons) {
       btn.setAttribute('aria-pressed', String(typeId === selectedType));
@@ -167,16 +172,33 @@ async function main(): Promise<void> {
     btnStreets.setAttribute('aria-pressed', String(on));
   }
 
+  const btnPave = el<HTMLButtonElement>('tool-pave');
+  btnPave.setAttribute('aria-pressed', 'false');
+  btnPave.addEventListener('click', () => setPaving(!paving));
+
   const roadButtons: Record<RoadClass, HTMLButtonElement> = {
     lane: el<HTMLButtonElement>('road-lane'),
     street: el<HTMLButtonElement>('road-street'),
     high: el<HTMLButtonElement>('road-high'),
   };
 
+  function setPaving(on: boolean): void {
+    paving = on;
+    btnPave.setAttribute('aria-pressed', String(on));
+    view.clearGhost();
+    if (on) {
+      roadClass = null;
+      roadPoints = [];
+      for (const btn of Object.values(roadButtons)) btn.setAttribute('aria-pressed', 'false');
+      selectType(null);
+    }
+  }
+
   function setRoadClass(cls: RoadClass | null): void {
     roadClass = cls;
     roadPoints = [];
     view.clearGhost();
+    if (cls) setPaving(false);
     for (const [k, btn] of Object.entries(roadButtons)) {
       btn.setAttribute('aria-pressed', String(k === cls));
     }
@@ -241,6 +263,14 @@ async function main(): Promise<void> {
     if (e.button !== 0) return;
     const w = camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection);
 
+    if (paving) {
+      if (world.paveNearestPath(w)) {
+        world.rebuildFabric();
+        view.markBuildingsDirty();
+      }
+      return;
+    }
+
     if (roadClass) {
       roadPoints.push(w);
       return;
@@ -290,7 +320,8 @@ async function main(): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (roadClass) setRoadClass(null);
+      if (paving) setPaving(false);
+      else if (roadClass) setRoadClass(null);
       else selectType(null);
     } else if (e.key === 'Enter') finishRoad();
     else if (e.key === 'c' || e.key === 'C') setOverlay(!view.showOverlay);
@@ -363,7 +394,12 @@ async function main(): Promise<void> {
       }
     }
 
-    if (cursor && roadClass) {
+    if (cursor && paving) {
+      const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
+      view.clearGhost();
+      const found = world.pathNear(w, 22);
+      view.setPaveHighlight(found ? found.path : null);
+    } else if (cursor && roadClass) {
       const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
       view.clearGhost();
       view.setRoadPreview(roadPoints.length ? [...roadPoints, w] : null, roadClass);

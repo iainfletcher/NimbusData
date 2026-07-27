@@ -44,9 +44,11 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Place, remove, pan, zoom, pause, and overlays for character and streets
 
 - Ambient people walking the network, depth-sorted against buildings
+- Paving a worn path into a road, keeping its wander
+- Market stalls, open-field strips, livestock
 
-**Not yet built:** paving a worn path into a road; market stalls, strip fields
-and animals; anything beyond the medieval era.
+**Not yet built:** territory and the cultural pressure field (`design/01`);
+anything beyond the medieval era; the economy.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

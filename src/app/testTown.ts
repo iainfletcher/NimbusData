@@ -42,12 +42,31 @@ export function seedTestTown(world: World): void {
       core: ['church', 'chapel', 'almshouse', 'green', 'orchard'],
       cottages: 9,
     },
+    {
+      // Farms out along the lane, with their strips beyond.
+      at: { x: c - 210, y: c - 40 },
+      angle: 0.75,
+      length: 140,
+      core: ['farm', 'watermill', 'farm'],
+      cottages: 5,
+    },
   ];
 
-  // The high street first: the road that ties the quarters together.
+  // The high street runs through the town proper; the farms sit off a lane of
+  // their own, because a single road doubling back through every quarter is not
+  // how any town is laid out.
+  const [working, trading, church, farms] = quarters;
   world.addRoad(
-    quarters.map((q) => ({ x: q.at.x, y: q.at.y })),
+    [working, trading, church].map((q) => ({ x: q.at.x, y: q.at.y })),
     'high',
+  );
+  world.addRoad(
+    [
+      { x: trading.at.x, y: trading.at.y },
+      { x: (trading.at.x + farms.at.x) / 2, y: (trading.at.y + farms.at.y) / 2 - 30 },
+      { x: farms.at.x, y: farms.at.y },
+    ],
+    'street',
   );
 
   for (const q of quarters) {

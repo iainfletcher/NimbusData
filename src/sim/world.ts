@@ -1,8 +1,8 @@
 import { CharacterField, COHERENCE_THRESHOLD } from './field';
 import { Terrain } from './terrain';
 import { buildingType } from './buildings';
-import { emptyFabric, generateFabric, orientToFabric, type Fabric } from './fabric';
-import { nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
+import { emptyFabric, generateFabric, orientToFabric, type Fabric, type StreetVertex } from './fabric';
+import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
@@ -142,6 +142,59 @@ export class World {
     this.roads.splice(i, 1);
     this.markFabricDirty();
     return true;
+  }
+
+  /**
+   * Find the worn path nearest a point. The game already knows where people
+   * actually walk; this is what lets the player see it.
+   */
+  pathNear(pos: Vec2, maxDistance: number): { path: StreetVertex[]; distance: number } | null {
+    let best: { path: StreetVertex[]; distance: number } | null = null;
+
+    for (const path of this._fabric.paths) {
+      for (let i = 0; i < path.length - 1; i++) {
+        const near = closestPointOnSegment(pos, path[i], path[i + 1]);
+        const d = Math.hypot(pos.x - near.x, pos.y - near.y);
+        if (d > maxDistance) continue;
+        if (best && d >= best.distance) continue;
+        best = { path, distance: d };
+      }
+    }
+
+    return best;
+  }
+
+  /**
+   * Pave a desire path into a road (design/05 §7).
+   *
+   * The town shows you where it wants a road; you decide whether to build it.
+   * The paved road keeps the path's exact wander, so it is visibly a different
+   * kind of thing from one you drew yourself: **roads you draw are straight
+   * because you drew them, roads you pave bend because people did.**
+   */
+  paveNearestPath(pos: Vec2, maxDistance = 22): Road | null {
+    const found = this.pathNear(pos, maxDistance);
+    if (!found) return null;
+
+    // Class follows how well worn it already is.
+    let widest = 0;
+    for (const v of found.path) widest = Math.max(widest, v.halfWidth);
+    const cls: RoadClass = widest >= 4 ? 'high' : widest >= 2.6 ? 'street' : 'lane';
+
+    // Thin the vertex count: Chaikin left it dense, and a road needs corners it
+    // can actually round.
+    const points: Vec2[] = [];
+    const stride = Math.max(1, Math.floor(found.path.length / 12));
+    for (let i = 0; i < found.path.length; i += stride) {
+      points.push({ x: found.path[i].x, y: found.path[i].y });
+    }
+    const last = found.path[found.path.length - 1];
+    const tail = points[points.length - 1];
+    if (Math.hypot(tail.x - last.x, tail.y - last.y) > 1) {
+      points.push({ x: last.x, y: last.y });
+    }
+
+    return this.addRoad(points, cls);
   }
 
   /** Nearest road to a point, for frontage snapping. */

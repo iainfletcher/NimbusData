@@ -27,7 +27,10 @@ export type DecorKind =
   | 'woodpile'
   | 'barrel'
   | 'stone'
-  | 'cart';
+  | 'cart'
+  | 'stall'
+  | 'fieldStrip'
+  | 'sheep';
 
 export interface DecorItem {
   kind: DecorKind;
@@ -74,6 +77,8 @@ export function generateDecor(
 
   scatterWoodland(items, terrain, buildings, roads, bounds, seed, rng);
   for (const b of buildings) plotFor(items, terrain, b, buildings, roads, fabric, rng);
+  for (const b of buildings) stripFields(items, terrain, b, buildings, roads, rng);
+  marketStalls(items, terrain, buildings, roads, rng);
   verges(items, terrain, fabric, buildings, rng);
 
   return { items };
@@ -361,6 +366,128 @@ function plantOrchard(
       variant: rng(),
       height: 7 + rng() * 4,
     });
+  }
+
+  // Somebody's sheep, on the common.
+  const flock = 3 + Math.floor(rng() * 5);
+  for (let i = 0; i < flock; i++) {
+    const p = at((rng() - 0.5) * hw * 1.3, (rng() - 0.5) * hd * 1.3);
+    if (terrain.isWater(p.x, p.y)) continue;
+    items.push({
+      kind: 'sheep',
+      pos: p,
+      size: 0.6 + rng() * 0.2,
+      angle: rng() * Math.PI * 2,
+      variant: rng(),
+      height: 0.85,
+    });
+  }
+}
+
+/**
+ * Medieval open fields: long narrow strips in rotation, some green, some gold,
+ * some left fallow. Instantly reads as farmland and is very hard to mistake for
+ * anything else.
+ */
+function stripFields(
+  items: DecorItem[],
+  terrain: Terrain,
+  b: Building,
+  buildings: readonly Building[],
+  roads: readonly Road[],
+  rng: () => number,
+): void {
+  const type = buildingType(b.typeId);
+  if (type.id !== 'farm' && type.id !== 'watermill') return;
+
+  // Strips all run the same way in a given place, as they did in reality.
+  const angle = 0.5 + (b.id % 3) * 0.12;
+  const along = { x: Math.cos(angle), y: Math.sin(angle) };
+  const across = { x: -along.y, y: along.x };
+
+  const strips = 7 + Math.floor(rng() * 5);
+  const stripWidth = 7;
+  const half = (strips * stripWidth) / 2;
+  const length = 34 + rng() * 22;
+  const offset = 62 + rng() * 30;
+
+  for (let i = 0; i < strips; i++) {
+    const u = -half + stripWidth * (i + 0.5);
+    const centre = {
+      x: b.pos.x + across.x * u + along.x * offset,
+      y: b.pos.y + across.y * u + along.y * offset,
+    };
+    if (terrain.isWater(centre.x, centre.y)) continue;
+    if (terrain.slopeAt(centre.x, centre.y) > 0.32) continue;
+    if (distanceToNearestBuilding(buildings, centre) < 20) continue;
+    if (nearestRoad(roads, centre, 12)) continue;
+
+    items.push({
+      kind: 'fieldStrip',
+      pos: centre,
+      size: length / 2,
+      angle,
+      // Variant picks the crop, so neighbouring strips differ.
+      variant: rng(),
+      height: stripWidth / 2 - 0.6,
+    });
+
+    // A few sheep out on the fallow.
+    if (rng() < 0.22) {
+      const n = 2 + Math.floor(rng() * 4);
+      for (let k = 0; k < n; k++) {
+        const p = {
+          x: centre.x + along.x * (rng() - 0.5) * length + across.x * (rng() - 0.5) * 5,
+          y: centre.y + along.y * (rng() - 0.5) * length + across.y * (rng() - 0.5) * 5,
+        };
+        if (terrain.isWater(p.x, p.y)) continue;
+        items.push({
+          kind: 'sheep',
+          pos: p,
+          size: 0.6 + rng() * 0.2,
+          angle: rng() * Math.PI * 2,
+          variant: rng(),
+          height: 0.85,
+        });
+      }
+    }
+  }
+}
+
+/** Stalls crowd round a market cross, which is the whole point of a market cross. */
+function marketStalls(
+  items: DecorItem[],
+  terrain: Terrain,
+  buildings: readonly Building[],
+  roads: readonly Road[],
+  rng: () => number,
+): void {
+  for (const b of buildings) {
+    if (buildingType(b.typeId).id !== 'market') continue;
+
+    const n = 7 + Math.floor(rng() * 6);
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2 + rng() * 0.4;
+      const radius = 13 + rng() * 12;
+      const p = {
+        x: b.pos.x + Math.cos(angle) * radius,
+        y: b.pos.y + Math.sin(angle) * radius,
+      };
+      if (terrain.isWater(p.x, p.y)) continue;
+      if (distanceToNearestBuilding(buildings, p) < 7) continue;
+
+      const hit = nearestRoad(roads, p, 6);
+      if (hit && hit.distance < hit.halfWidth + 1) continue;
+
+      items.push({
+        kind: 'stall',
+        pos: p,
+        size: 1.7 + rng() * 0.5,
+        angle: hit ? hit.angle : angle,
+        variant: rng(),
+        height: 2.3,
+      });
+    }
   }
 }
 

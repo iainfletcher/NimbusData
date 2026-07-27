@@ -19,6 +19,10 @@ const CROP = 0x6f8446;
 const TIMBER = 0x8a6a48;
 const IRON = 0x4a4a4a;
 const GRAVE = 0xb0aa9c;
+/** Crops in rotation: young green, ripe gold, ploughed fallow, pasture. */
+const CROPS = [0x7a8f4a, 0xb59a48, 0x8a7350, 0x6f8a52, 0xa8913f];
+const AWNING = [0xa8484a, 0x4a6a92, 0xb08a3a, 0x5c8a5c, 0x8a5a8a];
+const FLEECE = 0xdcd6c4;
 
 export interface DecorContext {
   /** World position and height → screen point. */
@@ -227,5 +231,112 @@ export function drawDecorItem(g: Graphics, ctx: DecorContext, item: DecorItem): 
     case 'stone':
       box(g, ctx, item.pos, item.size, 0.18, item.angle, item.height, GRAVE);
       return;
+
+    case 'fieldStrip': {
+      // Flat on the ground, with a furrow line down it so it reads as ploughed.
+      const cos = Math.cos(item.angle);
+      const sin = Math.sin(item.angle);
+      const corners: Vec2[] = [
+        [-item.size, -item.height],
+        [item.size, -item.height],
+        [item.size, item.height],
+        [-item.size, item.height],
+      ].map(([dx, dy]) => ({
+        x: item.pos.x + dx * cos - dy * sin,
+        y: item.pos.y + dx * sin + dy * cos,
+      }));
+
+      const pts: number[] = [];
+      for (const c of corners) {
+        const p = ctx.project(c.x, c.y, ctx.groundAt(c.x, c.y));
+        pts.push(p.x, p.y);
+      }
+      const crop = pick(CROPS, item.variant);
+      g.poly(pts).fill(crop);
+
+      if (!ctx.isPlan) {
+        for (const off of [-0.45, 0, 0.45]) {
+          const a = {
+            x: item.pos.x - cos * item.size - sin * item.height * off,
+            y: item.pos.y - sin * item.size + cos * item.height * off,
+          };
+          const bEnd = {
+            x: item.pos.x + cos * item.size - sin * item.height * off,
+            y: item.pos.y + sin * item.size + cos * item.height * off,
+          };
+          const pa = ctx.project(a.x, a.y, ctx.groundAt(a.x, a.y));
+          const pb = ctx.project(bEnd.x, bEnd.y, ctx.groundAt(bEnd.x, bEnd.y));
+          g.poly([pa.x, pa.y - 0.18, pb.x, pb.y - 0.18, pb.x, pb.y + 0.18, pa.x, pa.y + 0.18])
+            .fill(shade(crop, -0.14));
+        }
+      }
+      return;
+    }
+
+    case 'stall': {
+      const canopy = pick(AWNING, item.variant);
+      if (ctx.isPlan) {
+        const p = ctx.project(item.pos.x, item.pos.y, ground);
+        g.circle(p.x, p.y, item.size * 0.8).fill(canopy);
+        return;
+      }
+
+      // A trestle under a striped awning, which is a market in one shape.
+      box(g, ctx, item.pos, item.size * 0.75, item.size * 0.5, item.angle,
+        item.height * 0.45, TIMBER);
+
+      const cos = Math.cos(item.angle);
+      const sin = Math.sin(item.angle);
+      const corners: Vec2[] = [
+        [-item.size, -item.size * 0.62],
+        [item.size, -item.size * 0.62],
+        [item.size, item.size * 0.62],
+        [-item.size, item.size * 0.62],
+      ].map(([dx, dy]) => ({
+        x: item.pos.x + dx * cos - dy * sin,
+        y: item.pos.y + dx * sin + dy * cos,
+      }));
+
+      const eaveH = ground + item.height * 0.78;
+      const ridgeH = ground + item.height;
+      const eave = corners.map((c) => ctx.project(c.x, c.y, eaveH));
+      const ridgeA = ctx.project(
+        item.pos.x - cos * item.size,
+        item.pos.y - sin * item.size,
+        ridgeH,
+      );
+      const ridgeB = ctx.project(
+        item.pos.x + cos * item.size,
+        item.pos.y + sin * item.size,
+        ridgeH,
+      );
+
+      g.poly([
+        eave[0].x, eave[0].y, eave[1].x, eave[1].y, ridgeB.x, ridgeB.y, ridgeA.x, ridgeA.y,
+      ]).fill(shade(canopy, 0.1));
+      g.poly([
+        eave[3].x, eave[3].y, eave[2].x, eave[2].y, ridgeB.x, ridgeB.y, ridgeA.x, ridgeA.y,
+      ]).fill(shade(canopy, -0.18));
+      return;
+    }
+
+    case 'sheep': {
+      if (ctx.isPlan) {
+        const p = ctx.project(item.pos.x, item.pos.y, ground);
+        g.circle(p.x, p.y, item.size * 0.7).fill(FLEECE);
+        return;
+      }
+      const body = ctx.project(item.pos.x, item.pos.y, ground + item.height * 0.55);
+      const base = ctx.project(item.pos.x, item.pos.y, ground);
+      g.ellipse(base.x, base.y, item.size * 0.62, item.size * 0.3)
+        .fill({ color: 0x2f3a2c, alpha: 0.22 });
+      g.ellipse(body.x, body.y, item.size * 0.78, item.size * 0.5).fill(FLEECE);
+      g.circle(
+        body.x + Math.cos(item.angle) * item.size * 0.62,
+        body.y - item.size * 0.12,
+        item.size * 0.3,
+      ).fill(0x50483f);
+      return;
+    }
   }
 }

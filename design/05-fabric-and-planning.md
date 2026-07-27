@@ -232,14 +232,20 @@ Implemented in `src/sim/roads.ts` and `src/sim/fabric.ts`. In plan view the two
 kinds are immediately distinguishable: straight grey made roads carrying the
 frontages, pale wandering tracks worn behind them into back lanes and yards.
 
-### The obvious next move: paving a desire path
+### Paving a desire path — built
 
-The game already knows where people actually walk. Letting the player **pave a
-worn path into a road** would close the loop beautifully — *the town shows you
-where it wants a road, and you decide whether to build it*. That is the
-intentional/organic tension in a single interaction, and it is exactly the
-"legible and alive" thesis: you can see the desire, and you choose whether to
-formalise it.
+The game already knows where people actually walk, so the player can now **pave a
+worn path into a road**: hover to highlight the track, click to make it permanent.
+*The town shows you where it wants a road, and you decide whether to build it.*
+
+The detail that makes it worth having: **a paved road keeps the path's exact
+wander.** So the two origins stay visibly distinct — *roads you draw are straight
+because you drew them; roads you pave bend because people did.* A mature town
+ends up carrying its own history in the shape of its streets, which is Pillar E
+arriving through the fabric system rather than through anything built for it.
+
+Its class follows how well worn the track already was, so a heavily used route
+paves as a street and a back way paves as a lane.
 
 ## 8. Risks
 

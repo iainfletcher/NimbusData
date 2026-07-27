@@ -249,21 +249,55 @@ export class WorldView {
    * Roads are drawn as a made surface with a kerb — deliberately crisper and
    * cooler than the worn earth of a desire path, so intention reads differently
    * from accident at a glance.
+   *
+   * Every kerb is laid before any surface. Drawing each road complete in turn
+   * paints the second road's kerb straight across the first road's surface, so
+   * every junction ends up with a dark line ruled through it. Two passes make
+   * junctions merge into one continuous piece of ground, which is what a
+   * junction actually is.
    */
   private drawRoads(): void {
     const g = this.roads;
     g.clear();
 
-    for (const road of this.world.roads) {
-      const halfWidth = ROAD_HALF_WIDTH[road.cls];
-      const centre: Vec2[] = [];
-      walkRoad(road, 6, (p) => centre.push(p));
-      if (centre.length < 2) continue;
+    const laid = this.world.roads
+      .map((road) => {
+        const halfWidth = ROAD_HALF_WIDTH[road.cls];
+        const centre: Vec2[] = [];
+        walkRoad(road, 6, (p) => centre.push(p));
+        return { road, halfWidth, verts: centre.map((p) => ({ ...p, halfWidth })) };
+      })
+      .filter((r) => r.verts.length >= 2);
 
-      const verts: StreetVertex[] = centre.map((p) => ({ ...p, halfWidth }));
-      this.fillRibbon(g, verts, ROAD_EDGE, 1.5);
-      this.fillRibbon(g, verts, ROAD, 0);
+    // Pass one: kerbs, and a rounded corner at every turn and terminus.
+    for (const r of laid) {
+      this.fillRibbon(g, r.verts, ROAD_EDGE, 1.5);
+      for (const p of r.road.points) {
+        this.groundDisc(g, p, r.halfWidth + 1.5, ROAD_EDGE);
+      }
     }
+
+    // Pass two: surfaces, which cover every kerb they cross.
+    for (const r of laid) {
+      this.fillRibbon(g, r.verts, ROAD, 0);
+      for (const p of r.road.points) {
+        this.groundDisc(g, p, r.halfWidth, ROAD);
+      }
+    }
+  }
+
+  /**
+   * A disc lying flat on the ground. In isometric a ground circle projects to an
+   * axis-aligned ellipse with semi-axes r/√2 and r/(2√2), so this is exact
+   * rather than a fudge.
+   */
+  private groundDisc(g: Graphics, at: Vec2, radius: number, colour: number): void {
+    const p = this.projectOnGround(at);
+    if (this.mode === 'plan') {
+      g.circle(p.x, p.y, radius).fill(colour);
+      return;
+    }
+    g.ellipse(p.x, p.y, radius * 0.7071, radius * 0.3536).fill(colour);
   }
 
   private fillRibbon(
@@ -288,6 +322,18 @@ export class WorldView {
     }
 
     g.poly(points).fill(colour);
+  }
+
+  /** Highlight a worn path the player is about to pave. */
+  setPaveHighlight(path: StreetVertex[] | null): void {
+    const g = this.ghost;
+    if (!path || path.length < 2) return;
+    this.fillRibbon(
+      g,
+      path.map((v) => ({ ...v, halfWidth: v.halfWidth + 0.8 })),
+      0xf0dfa6,
+      0,
+    );
   }
 
   /** Preview of a road being drawn. Pass null to clear. */
@@ -909,27 +955,58 @@ function depthBand(depth: number): number {
 const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
 
-/** Offset a street centreline to both kerbs, mitring at each vertex. */
+/**
+ * Offset a centreline to both kerbs, mitring at each vertex.
+ *
+ * The mitre has to be limited. Averaging the two segment directions blows up as
+ * the turn approaches 180° — the offset shoots off to infinity and the ribbon
+ * folds through itself, which shows up as a large stray wedge across the map.
+ * Clamping to a mitre limit turns that into a blunt corner instead.
+ */
+const MITRE_LIMIT = 2.2;
+
 function offsetPath(path: StreetVertex[]): { left: Vec2[]; right: Vec2[] } {
   const left: Vec2[] = [];
   const right: Vec2[] = [];
 
-  for (let i = 0; i < path.length; i++) {
-    const prev = path[Math.max(0, i - 1)];
-    const next = path[Math.min(path.length - 1, i + 1)];
+  const normalOf = (a: Vec2, b: Vec2): Vec2 | null => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return null;
+    return { x: -dy / len, y: dx / len };
+  };
 
-    let nx = -(next.y - prev.y);
-    let ny = next.x - prev.x;
-    const len = Math.hypot(nx, ny);
-    if (len < 1e-6) {
-      nx = 0;
-      ny = 1;
+  for (let i = 0; i < path.length; i++) {
+    const inNormal = i > 0 ? normalOf(path[i - 1], path[i]) : null;
+    const outNormal = i < path.length - 1 ? normalOf(path[i], path[i + 1]) : null;
+
+    let nx: number;
+    let ny: number;
+    let scale = 1;
+
+    if (inNormal && outNormal) {
+      const mx = inNormal.x + outNormal.x;
+      const my = inNormal.y + outNormal.y;
+      const len = Math.hypot(mx, my);
+
+      if (len < 1e-3) {
+        // A hairpin: there is no sensible mitre, so square the end off.
+        nx = outNormal.x;
+        ny = outNormal.y;
+      } else {
+        nx = mx / len;
+        ny = my / len;
+        const cos = nx * outNormal.x + ny * outNormal.y;
+        scale = Math.min(MITRE_LIMIT, cos > 1e-3 ? 1 / cos : MITRE_LIMIT);
+      }
     } else {
-      nx /= len;
-      ny /= len;
+      const n = inNormal ?? outNormal ?? { x: 0, y: 1 };
+      nx = n.x;
+      ny = n.y;
     }
 
-    const w = path[i].halfWidth;
+    const w = path[i].halfWidth * scale;
     left.push({ x: path[i].x + nx * w, y: path[i].y + ny * w });
     right.push({ x: path[i].x - nx * w, y: path[i].y - ny * w });
   }

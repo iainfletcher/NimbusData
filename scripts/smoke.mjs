@@ -82,6 +82,21 @@ for (let i = 0; i < 9; i++) {
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(OUT, '05-close.png') });
 
+// Pave a couple of worn paths, to exercise junctions where they meet a road.
+await page.click('#tool-pave');
+await page.waitForTimeout(300);
+for (const [x, y] of [[600, 470], [700, 560], [520, 430]]) {
+  await page.mouse.move(x, y);
+  await page.waitForTimeout(150);
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(400);
+}
+const pavedRoads = await page.textContent('#r-streets');
+console.log(`roads / paths after paving: ${pavedRoads}`);
+await page.click('#tool-pave');
+await page.waitForTimeout(400);
+await page.screenshot({ path: join(OUT, '07-paved.png') });
+
 // People should be somewhere different a moment later.
 const peopleMoved = await page.evaluate(async () => {
   const canvas = document.querySelector('canvas');
