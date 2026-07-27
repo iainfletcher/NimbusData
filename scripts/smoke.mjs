@@ -70,6 +70,18 @@ await page.click('#toggle-overlay');
 await page.waitForTimeout(500);
 await page.screenshot({ path: join(OUT, '04-plan.png') });
 
+// Close up, in the world view: the honest test of whether quarters read apart
+// from material and form rather than from a debug colour.
+await page.click('#view-iso');
+await page.waitForTimeout(600);
+for (let i = 0; i < 5; i++) {
+  await page.mouse.move(700, 420);
+  await page.mouse.wheel(0, -240);
+  await page.waitForTimeout(120);
+}
+await page.waitForTimeout(500);
+await page.screenshot({ path: join(OUT, '05-close.png') });
+
 await browser.close();
 
 console.log(`buildings after seeding: ${seeded}`);

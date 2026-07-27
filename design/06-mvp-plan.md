@@ -166,7 +166,7 @@ authored street templates rather than procedural generation.
 | **3** | ✅ Dominant + coherence computed and visualised per cell | `04`'s core |
 | **4** | ◐ Organic fabric: streets generate between buildings | **The big risk** — see `05` §6 |
 | **5** | ✅ Buildings evolve by dominant character, 2–3 steps | The chain's payoff |
-| **6** | ⬜ Visual character identity — palettes and idioms per character | Legibility |
+| **6** | ✅ Visual character identity — materials and roof forms per character | Legibility |
 | **7** | ⬜ Ambient agents | Aliveness |
 
 Both projections were built up front rather than at milestone 6, since D3 chose
@@ -193,10 +193,27 @@ readable quarters, and two things worth noting happened without being designed f
 Housing evolution reads well: merchant houses appear around the market, workers'
 terraces around the foundry, close cottages and garden cottages by the church.
 
-**Caveat on success criterion 1.** Quarters currently read as different because
-each character has a placeholder *colour*. That's a weak proxy — the real test is
-whether they read from architecture, materials and street furniture (`04` §5),
-which is milestone 6. Colour passing is necessary but nowhere near sufficient.
+### Success criteria: where they stand
+
+**1. Three visibly different quarters, labels off — passes, and now honestly.**
+The earlier pass was a cheat: quarters read apart because each character had an
+arbitrary hue. Milestone 6 replaced that with **material and form** — soot brick
+under slate with tall stacks for the working quarter, lime render under red clay
+tile for the market, pale limestone under lead with a spire for the church. You
+can tell them apart close up with nothing labelled. The arbitrary hues survive
+only in the character overlay, where as a *diagnostic* they are exactly right.
+
+**2. The street layout looks like a place — passes.** Made roads carrying
+frontages, worn paths behind them into back lanes and yards. See `05` §6–7.
+
+**3. A cottage becoming a workers' terrace is satisfying and comprehensible —
+passes.** Merchant houses gather round the market, terraces round the foundry,
+close cottages by the church, and each is built of what that quarter is built of.
+
+All three land, so the design is real and the rest is construction. The
+qualification worth keeping: this is one seeded town on one map. It has not been
+tested against a player placing badly, or against a town large enough to get
+boring.
 
 Milestone 4 is where this either works or doesn't, so it's worth reaching fast —
 possibly even reordering it earlier with a hardcoded character field, to fail cheap

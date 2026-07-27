@@ -27,21 +27,20 @@ import a rendering library, touch the DOM, or call `Math.random`.
 
 ## Current state
 
-Milestones 0–3 and 5 are done, and 4 is partly done (`design/06` §4):
+Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 
 - Terrain generation with a river, and placement rules that respect water and slope
 - The character field: emission, diffusion, dominant and coherence
 - Both projections — isometric world view and top-down plan — at matching scale
 - Housing evolving into the house that belongs where it stands
-- Streets generated as desire lines, with width from how many journeys use them
-- Buildings turning to face the street they stand on
+- Player-drawn roads as the armature, and worn desire paths in the gaps
+- Buildings snapping to a road frontage, or facing a worn path more loosely
+- Per-character materials and roof forms — brick and slate, render and tile,
+  limestone and lead, with spires and chimneys for landmarks
 - Place, remove, pan, zoom, pause, and overlays for character and streets
 
-**Partly done:** street generation works well between places but within a cluster
-the fabric is only as linear as the placement — see `design/05` §6.
-
-**Not yet built:** infill (yards, walls, back lanes), per-character architecture,
-ambient people.
+**Not yet built:** infill (yards, walls, garden plots), ambient people, and paving
+a worn path into a road.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.
