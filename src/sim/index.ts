@@ -1,5 +1,6 @@
 export * from './types';
 export * from './rng';
+export * from './poisson';
 export * from './erosion';
 export * from './hydrology';
 export * from './terrain';

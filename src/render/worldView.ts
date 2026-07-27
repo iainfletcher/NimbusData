@@ -19,6 +19,7 @@ import { WORLD_SIZE } from '../sim';
 import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
 import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
+import { deriveFacade, type Panel } from './grammar';
 import { drawDecorItem, type DecorContext } from './decor';
 import { CHARACTER_COLOURS, shade, terrainColour, waterColour } from './palette';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
@@ -745,14 +746,16 @@ export class WorldView {
           corners[w.j].x - corners[w.i].x,
           corners[w.j].y - corners[w.i].y,
         );
-        this.drawOpenings(
+        this.drawFacade(
           g,
           [base[w.i], base[w.j], top[w.j], top[w.i]],
+          b.typeId,
           length,
           eavesHeight,
           face,
           wi === walls.length - 1,
           look.framed === true,
+          b.id * 7 + wi,
         );
       }
     }
@@ -770,20 +773,22 @@ export class WorldView {
   }
 
   /**
-   * Windows and a door, placed on a wall face by interpolating its projected
-   * corners. The projection is affine, so this is exact rather than approximate.
+   * Draw a wall by deriving it (`grammar.ts`) rather than by rule of thumb.
    *
-   * Openings are what make a wall read as inhabited rather than as a slab, and
-   * at this scale they cost four points each.
+   * Panels come back in the face's own [0,1] space; the face's four projected
+   * corners are then interpolated to place them. The projection is affine, so
+   * this is exact rather than approximate.
    */
-  private drawOpenings(
+  private drawFacade(
     g: Graphics,
     face: [Point, Point, Point, Point],
+    typeId: string,
     worldLength: number,
     worldHeight: number,
     wallColour: number,
     withDoor: boolean,
     framed: boolean,
+    seed: number,
   ): void {
     const [b0, b1, t1, t0] = face;
 
@@ -801,50 +806,27 @@ export class WorldView {
       g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill(colour);
     };
 
-    const glass = shade(wallColour, -0.52);
-    const door = shade(wallColour, -0.62);
+    const glass = shade(wallColour, -0.54);
+    const deep = shade(wallColour, -0.66);
+    const timber = TIMBER_FRAME;
 
-    const columns = Math.max(1, Math.min(6, Math.floor(worldLength / 3.4)));
-    const rows = Math.max(1, Math.min(3, Math.floor(worldHeight / 3.1)));
-
-    const winW = Math.min(0.16, (0.8 / columns) * 0.62);
-    const winH = Math.min(0.2, (0.72 / rows) * 0.6);
-
-    for (let r = 0; r < rows; r++) {
-      const v = 0.24 + (r * 0.62) / rows;
-      for (let c = 0; c < columns; c++) {
-        const u = (c + 0.5) / columns;
-        // Ground-floor centre is the doorway, so skip the window there.
-        if (withDoor && r === 0 && Math.abs(u - 0.5) < 0.5 / columns) continue;
-        quad(u - winW / 2, v, u + winW / 2, v + winH, glass);
-      }
+    for (const p of deriveFacade(typeId, worldLength, worldHeight, seed, withDoor)) {
+      drawPanel(quad, p.u0, p.v0, p.u1, p.v1, p.panel, glass, deep, timber);
     }
 
-    if (withDoor) {
-      const w = Math.min(0.13, 0.6 / columns);
-      quad(0.5 - w / 2, 0.02, 0.5 + w / 2, 0.02 + Math.min(0.34, 2.1 / worldHeight), door);
-    }
-
-    // Exposed frame: posts, a sill and a wall plate. Drawn last so the beams sit
-    // over the render, which is how a timber-framed wall actually goes together.
+    // Exposed frame goes on last: the beams sit over the render, which is how a
+    // timber-framed wall actually goes together.
     if (framed) {
-      const beam = TIMBER_FRAME;
       const posts = Math.max(2, Math.min(7, Math.round(worldLength / 2.4)));
       const thickness = Math.min(0.035, 0.5 / posts);
 
       for (let i = 0; i <= posts; i++) {
         const u = i / posts;
-        quad(
-          Math.max(0, u - thickness),
-          0,
-          Math.min(1, u + thickness),
-          1,
-          beam,
-        );
+        quad(Math.max(0, u - thickness), 0, Math.min(1, u + thickness), 1, timber);
       }
-      quad(0, 0.94, 1, 1, beam);
-      if (worldHeight > 5) quad(0, 0.45, 1, 0.51, beam);
-      quad(0, 0, 1, 0.05, beam);
+      quad(0, 0.94, 1, 1, timber);
+      if (worldHeight > 5) quad(0, 0.45, 1, 0.51, timber);
+      quad(0, 0, 1, 0.05, timber);
     }
   }
 
@@ -1120,6 +1102,82 @@ export class WorldView {
       0.55,
       valid ? 0x9ad6a0 : 0xd68a8a,
     );
+  }
+}
+
+/** How each terminal of the grammar is actually drawn. */
+function drawPanel(
+  quad: (u0: number, v0: number, u1: number, v1: number, colour: number) => void,
+  u0: number,
+  v0: number,
+  u1: number,
+  v1: number,
+  panel: Panel,
+  glass: number,
+  deep: number,
+  timber: number,
+): void {
+  const w = u1 - u0;
+  const h = v1 - v0;
+
+  switch (panel) {
+    case 'window':
+      quad(u0, v0, u1, v1, glass);
+      // A single glazing bar is enough to read as a window rather than a hole.
+      quad(u0 + w * 0.46, v0, u0 + w * 0.54, v1, timber);
+      return;
+
+    case 'tallWindow':
+      quad(u0 + w * 0.18, v0, u1 - w * 0.18, v1, glass);
+      quad(u0 + w * 0.46, v0, u0 + w * 0.54, v1, timber);
+      return;
+
+    case 'mullioned': {
+      // Leaded lights: a grid of small panes, which is what says "old money".
+      const cols = 3;
+      const rows = 2;
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          quad(
+            u0 + (w * (c + 0.12)) / cols,
+            v0 + (h * (r + 0.12)) / rows,
+            u0 + (w * (c + 0.88)) / cols,
+            v0 + (h * (r + 0.88)) / rows,
+            glass,
+          );
+        }
+      }
+      return;
+    }
+
+    case 'arched':
+      // Stepped head, standing in for an arch at this scale.
+      quad(u0 + w * 0.2, v0, u1 - w * 0.2, v1 - h * 0.22, glass);
+      quad(u0 + w * 0.3, v1 - h * 0.24, u1 - w * 0.3, v1 - h * 0.08, glass);
+      return;
+
+    case 'shopfront':
+      quad(u0, v0, u1, v1, glass);
+      quad(u0, v0, u1, v0 + h * 0.12, timber);
+      quad(u0, v1 - h * 0.14, u1, v1, timber);
+      return;
+
+    case 'door':
+      quad(u0 + w * 0.2, v0, u1 - w * 0.2, v1, deep);
+      return;
+
+    case 'vent':
+      for (let i = 0; i < 3; i++) {
+        quad(u0, v0 + h * (0.18 + i * 0.28), u1, v0 + h * (0.3 + i * 0.28), deep);
+      }
+      return;
+
+    case 'loft':
+      quad(u0 + w * 0.28, v0 + h * 0.2, u1 - w * 0.28, v1 - h * 0.1, deep);
+      return;
+
+    case 'blank':
+      return;
   }
 }
 

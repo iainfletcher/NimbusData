@@ -1,6 +1,7 @@
 import { buildingType } from './buildings';
 import { nearestRoad, type Road } from './roads';
 import { makeRng, fbm } from './rng';
+import { poissonDisk } from './poisson';
 import { Terrain } from './terrain';
 import type { Fabric } from './fabric';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
@@ -61,7 +62,7 @@ export function emptyDecor(): Decor {
 const CLEARING_RADIUS = 95;
 /** Trees return gradually over this distance beyond the clearing, not all at once. */
 const CLEARING_FADE = 85;
-const TREE_SPACING = 11;
+const TREE_SPACING = 9.5;
 
 export function generateDecor(
   terrain: Terrain,
@@ -120,6 +121,12 @@ function distanceToNearestBuilding(buildings: readonly Building[], p: Vec2): num
 /**
  * Woodland follows a noise field, so it forms copses and shelter belts rather
  * than an even sprinkle — and stops where the town begins.
+ *
+ * Positions come from Poisson-disk sampling rather than a jittered grid. A
+ * jittered grid still ties every tree to a lattice cell, and at distance the
+ * rows show; blue noise has no structure at any scale, so a wood looks like a
+ * wood. Density is then applied by *rejecting* samples, which keeps the even
+ * spacing while letting the copses form.
  */
 function scatterWoodland(
   items: DecorItem[],
@@ -130,39 +137,42 @@ function scatterWoodland(
   seed: number,
   rng: () => number,
 ): void {
-  for (let y = bounds.y0; y < bounds.y1; y += TREE_SPACING) {
-    for (let x = bounds.x0; x < bounds.x1; x += TREE_SPACING) {
-      const jx = x + (rng() - 0.5) * TREE_SPACING * 0.9;
-      const jy = y + (rng() - 0.5) * TREE_SPACING * 0.9;
-      const p = { x: jx, y: jy };
+  const candidates = poissonDisk(
+    bounds.x0,
+    bounds.y0,
+    bounds.x1,
+    bounds.y1,
+    TREE_SPACING,
+    rng,
+  );
 
-      if (terrain.isWater(jx, jy)) continue;
+  for (const p of candidates) {
+    if (terrain.isWater(p.x, p.y)) continue;
 
-      const density = fbm(jx / 190, jy / 190, seed ^ 0x77ee, 3);
-      if (density < 0.58) continue;
+    const density = fbm(p.x / 190, p.y / 190, seed ^ 0x77ee, 3);
+    if (density < 0.58) continue;
 
-      // Cleared ground around the town, and nothing growing in the road.
-      const toTown = distanceToNearestBuilding(buildings, p);
-      if (toTown < CLEARING_RADIUS) continue;
-      if (nearestRoad(roads, p, 10)) continue;
+    // Cleared ground around the town, and nothing growing in the road.
+    const toTown = distanceToNearestBuilding(buildings, p);
+    if (toTown < CLEARING_RADIUS) continue;
+    if (nearestRoad(roads, p, 10)) continue;
 
-      // Woodland returns gradually beyond the clearing rather than at a line.
-      const returning = Math.min(1, (toTown - CLEARING_RADIUS) / CLEARING_FADE);
+    // Woodland returns gradually beyond the clearing rather than at a line.
+    const returning = Math.min(1, (toTown - CLEARING_RADIUS) / CLEARING_FADE);
 
-      // Thin the edge of a wood so it doesn't end in a straight line either.
-      const edge = (density - 0.58) / 0.18;
-      if (rng() > Math.min(1, 0.2 + edge) * returning) continue;
+    // Thin the edge of a wood so it doesn't end in a straight line either.
+    const edge = (density - 0.58) / 0.18;
+    if (rng() > Math.min(1, 0.28 + edge) * returning) continue;
 
-      const conifer = fbm(jx / 320, jy / 320, seed ^ 0x31, 2) > 0.56;
-      items.push({
-        kind: conifer ? 'conifer' : 'tree',
-        pos: p,
-        size: 2.4 + rng() * 2.2,
-        angle: 0,
-        variant: rng(),
-        height: conifer ? 9 + rng() * 6 : 7 + rng() * 5,
-      });
-    }
+    const conifer = fbm(p.x / 320, p.y / 320, seed ^ 0x31, 2) > 0.56;
+    items.push({
+      kind: conifer ? 'conifer' : 'tree',
+      pos: p,
+      size: 2.4 + rng() * 2.2,
+      angle: 0,
+      variant: rng(),
+      height: conifer ? 9 + rng() * 6 : 7 + rng() * 5,
+    });
   }
 }
 

@@ -40,8 +40,10 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Buildings snapping to a road frontage, or facing a worn path more loosely
 - Per-character materials and roof forms — brick and slate, render and tile,
   limestone and lead, with spires and chimneys for landmarks
-- Windows, doors, chimneys, dormers, overhanging eaves, exposed timber framing
-  and per-building weathering
+- Facades derived by a split grammar, with a vocabulary per character —
+  shopfronts and mullions for trade, arched openings and plain stone for the
+  church, regular bays and vents for industry
+- Chimneys, dormers, overhanging eaves, timber framing, per-building weathering
 - Generated detail: woodland, hedged and walled plots, vegetable rows, working
   yards, churchyards, orchards and greens — none of it placed by the player
 - Place, remove, pan, zoom, pause, and overlays for character and streets
