@@ -7,6 +7,9 @@ import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
 import { OWNER_PLAYER, Territory } from './territory';
+import { Economy, roadCost } from './economy';
+import { computeLand, type Land } from './land';
+import { planRoads, type PlanSpec } from './plans';
 import { makeNameRng, streetName, townName } from './names';
 import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
 import { WORLD_SIZE, type Building, type Vec2 } from './types';
@@ -56,6 +59,8 @@ export class World {
   readonly crowd = new Crowd();
   private conductance: Conductance = openGround();
   readonly territory = new Territory();
+  readonly economy = new Economy();
+  private land: Land;
   private territoryCooldown = 0;
   /**
    * When false the character field falls back to flat cost, which makes geodesic
@@ -74,6 +79,7 @@ export class World {
     this.terrain = new Terrain(seed);
     this.nameRng = makeNameRng(seed);
     this.name = townName(this.nameRng);
+    this.land = computeLand(this.terrain, seed);
   }
 
   /**
@@ -139,6 +145,10 @@ export class World {
       return { ok: false, reason: 'Ground is water or too steep' };
     }
 
+    if (type.cost && !this.economy.canAfford(type.cost)) {
+      return { ok: false, reason: 'Not enough materials' };
+    }
+
     for (const other of this.buildings) {
       const otherType = buildingType(other.typeId);
       // Axis-aligned overlap test with a small gap so buildings never touch.
@@ -174,6 +184,9 @@ export class World {
       age: 0,
     };
     this.buildings.push(building);
+    // The rival builds on its own account, so only the player's spending counts.
+    const type = buildingType(typeId);
+    if (type.cost && owner === OWNER_PLAYER) this.economy.spend(type.cost);
     this.fieldDirty = true;
     this.markFabricDirty();
     return { ok: true, building };
@@ -207,8 +220,18 @@ export class World {
    * Lay an intentional road. Unlike desire paths, roads are authored and permanent
    * — the town never draws one for you and never removes one (design/05 §7).
    */
-  addRoad(points: Vec2[], cls: RoadClass = 'street'): Road | null {
+  addRoad(points: Vec2[], cls: RoadClass = 'street', free = false): Road | null {
     if (points.length < 2) return null;
+
+    let length = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      length += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+    }
+    const cost = roadCost(length, cls);
+    if (!free) {
+      if (!this.economy.canAfford(cost)) return null;
+      this.economy.spend(cost);
+    }
 
     const road: Road = {
       id: this.nextRoadId++,
@@ -281,6 +304,34 @@ export class World {
     return this.addRoad(points, cls);
   }
 
+  /**
+   * Lay out a planned composition — a crescent, a square, a grid (design/05 §2).
+   *
+   * A plan is only ever a set of roads: frontage snapping does the rest, so
+   * building along a curve produces a crescent without any further machinery.
+   * All-or-nothing on cost, since half a square is not a square.
+   */
+  applyPlan(spec: PlanSpec): boolean {
+    const roads = planRoads(spec);
+
+    let total = 0;
+    for (const r of roads) {
+      for (let i = 0; i < r.points.length - 1; i++) {
+        total += Math.hypot(
+          r.points[i + 1].x - r.points[i].x,
+          r.points[i + 1].y - r.points[i].y,
+        );
+      }
+    }
+
+    const cost = roadCost(total, 'street');
+    if (!this.economy.canAfford(cost)) return false;
+    this.economy.spend(cost);
+
+    for (const r of roads) this.addRoad(r.points, r.cls, true);
+    return true;
+  }
+
   /** Nearest road to a point, for frontage snapping. */
   roadNear(pos: Vec2, maxDistance: number): RoadHit | null {
     return nearestRoad(this.roads, pos, maxDistance);
@@ -336,6 +387,8 @@ export class World {
 
     for (const b of this.buildings) b.age++;
 
+    this.economy.update(this.buildings, this.land, this.terrain);
+
     this.evolveHousing();
 
     if (this.fabricDirty) {
@@ -362,6 +415,7 @@ export class World {
     if (this.terrain.waterPending) {
       if (this.waterCooldown > 0) this.waterCooldown--;
       else if (this.terrain.settleWater()) {
+        this.land = computeLand(this.terrain, this.seed);
         this.fieldDirty = true;
         this.markFabricDirty();
       }
@@ -403,6 +457,9 @@ export class World {
     let changed = false;
 
     for (const b of this.buildings) {
+      // A hungry town does not grow. It is not punished, it simply waits.
+      if (this.economy.hungry) break;
+
       const type = buildingType(b.typeId);
       if (!type.evolvesTo || b.age < SETTLING_TICKS) continue;
 

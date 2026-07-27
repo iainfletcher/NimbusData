@@ -55,8 +55,12 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 
 - Cultural pressure and a living border between rival settlements
 
-**Not yet built:** planned fabric — crescents, squares, grids (`design/05`);
-military pressure and combat; anything beyond the medieval era; the economy.
+- Planned fabric: crescent, square and grid layouts, rotatable, priced in stone
+- A light resource layer — timber, stone and food, all produced from what the
+  surrounding land actually holds
+
+**Not yet built:** military pressure and combat; planned-fabric amplification
+(`design/05` §3); anything beyond the medieval era.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

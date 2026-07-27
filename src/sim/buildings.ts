@@ -18,6 +18,7 @@ const TYPES: BuildingType[] = [
     width: 18,
     depth: 14,
     emissions: [{ character: 'industrious', strength: 1.6, radius: 110 }],
+    cost: { timber: 30, stone: 45 },
   },
   {
     id: 'tannery',
@@ -26,6 +27,7 @@ const TYPES: BuildingType[] = [
     width: 14,
     depth: 12,
     emissions: [{ character: 'industrious', strength: 1.2, radius: 90 }],
+    cost: { timber: 22, stone: 14 },
   },
   {
     id: 'sawmill',
@@ -37,6 +39,16 @@ const TYPES: BuildingType[] = [
       { character: 'industrious', strength: 0.9, radius: 70 },
       { character: 'rustic', strength: 0.3, radius: 50 },
     ],
+    cost: { timber: 16, stone: 8 },
+  },
+  {
+    id: 'quarry',
+    name: 'Quarry',
+    family: 'economic',
+    width: 20,
+    depth: 16,
+    emissions: [{ character: 'industrious', strength: 1.1, radius: 85 }],
+    cost: { timber: 14 },
   },
   {
     id: 'workshop',
@@ -45,6 +57,7 @@ const TYPES: BuildingType[] = [
     width: 10,
     depth: 9,
     emissions: [{ character: 'industrious', strength: 0.5, radius: 45 }],
+    cost: { timber: 14, stone: 6 },
   },
   {
     id: 'market',
@@ -56,6 +69,7 @@ const TYPES: BuildingType[] = [
       { character: 'mercantile', strength: 1.5, radius: 120 },
       { character: 'raucous', strength: 0.3, radius: 60 },
     ],
+    cost: { timber: 26, stone: 34 },
   },
   {
     id: 'warehouse',
@@ -64,6 +78,7 @@ const TYPES: BuildingType[] = [
     width: 16,
     depth: 12,
     emissions: [{ character: 'mercantile', strength: 0.8, radius: 70 }],
+    cost: { timber: 28, stone: 12 },
   },
   {
     id: 'watermill',
@@ -72,6 +87,7 @@ const TYPES: BuildingType[] = [
     width: 12,
     depth: 10,
     emissions: [{ character: 'rustic', strength: 1.0, radius: 80 }],
+    cost: { timber: 24, stone: 20 },
   },
   {
     id: 'farm',
@@ -80,6 +96,7 @@ const TYPES: BuildingType[] = [
     width: 18,
     depth: 14,
     emissions: [{ character: 'rustic', strength: 1.3, radius: 110 }],
+    cost: { timber: 20, stone: 6 },
   },
 
   // ---- Civic -------------------------------------------------------------
@@ -90,6 +107,7 @@ const TYPES: BuildingType[] = [
     width: 16,
     depth: 26,
     emissions: [{ character: 'devout', strength: 1.7, radius: 130 }],
+    cost: { timber: 30, stone: 90 },
   },
   {
     id: 'chapel',
@@ -98,6 +116,7 @@ const TYPES: BuildingType[] = [
     width: 9,
     depth: 13,
     emissions: [{ character: 'devout', strength: 0.7, radius: 60 }],
+    cost: { timber: 16, stone: 34 },
   },
   {
     id: 'almshouse',
@@ -106,6 +125,7 @@ const TYPES: BuildingType[] = [
     width: 14,
     depth: 9,
     emissions: [{ character: 'devout', strength: 0.5, radius: 55 }],
+    cost: { timber: 18, stone: 20 },
   },
   {
     id: 'tavern',
@@ -114,6 +134,7 @@ const TYPES: BuildingType[] = [
     width: 12,
     depth: 10,
     emissions: [{ character: 'raucous', strength: 1.4, radius: 95 }],
+    cost: { timber: 20, stone: 12 },
   },
   {
     id: 'alehouse',
@@ -122,6 +143,7 @@ const TYPES: BuildingType[] = [
     width: 9,
     depth: 8,
     emissions: [{ character: 'raucous', strength: 0.7, radius: 60 }],
+    cost: { timber: 12, stone: 7 },
   },
   {
     id: 'guildhall',
@@ -133,6 +155,7 @@ const TYPES: BuildingType[] = [
       { character: 'mercantile', strength: 1.1, radius: 100 },
       { character: 'devout', strength: 0.2, radius: 40 },
     ],
+    cost: { timber: 30, stone: 40 },
   },
   {
     id: 'green',
@@ -141,6 +164,7 @@ const TYPES: BuildingType[] = [
     width: 30,
     depth: 30,
     emissions: [{ character: 'verdant', strength: 1.4, radius: 120 }],
+    cost: { timber: 2 },
   },
   {
     id: 'orchard',
@@ -152,6 +176,7 @@ const TYPES: BuildingType[] = [
       { character: 'verdant', strength: 1.0, radius: 90 },
       { character: 'rustic', strength: 0.5, radius: 70 },
     ],
+    cost: { timber: 4 },
   },
 
   // ---- Residential -------------------------------------------------------
@@ -162,6 +187,7 @@ const TYPES: BuildingType[] = [
     width: 8,
     depth: 7,
     emissions: [],
+    cost: { timber: 10, stone: 4 },
     evolvesTo: {
       industrious: 'terrace',
       mercantile: 'merchant_house',

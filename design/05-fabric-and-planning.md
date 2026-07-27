@@ -247,7 +247,29 @@ arriving through the fabric system rather than through anything built for it.
 Its class follows how well worn the track already was, so a heavily used route
 paves as a street and a back way paves as a lane.
 
-## 8. Risks
+## 8. Built — planned fabric, and how thin it turned out to be
+
+Crescent, square and grid are implemented (`plans.ts`), and the implementation is
+about a hundred lines. That thinness is the finding:
+
+> **A plan is nothing but a road generator.**
+
+Frontage snapping already aligns buildings to whatever road they stand against,
+so laying a curved road *is* laying out a crescent — the buildings that follow
+sit on its arc at a consistent setback with no further machinery. The square is
+four sides round an open middle; the grid is six straight lines. Nothing reserves
+plots, nothing places buildings, nothing knows what a "crescent" is beyond its
+geometry.
+
+**And the cost asymmetry from §2 falls out for free.** These lay a great deal of
+road, and road is paid for in stone by the metre, so planned fabric is expensive
+exactly as the design wants without a special rule. A grid ran to 192 stone
+against a crescent's 46.
+
+What is *not* built is §3's amplification — planned fabric does not yet make its
+character stronger or its failures worse. That remains the interesting half.
+
+## 9. Risks
 
 ## 7. Risks
 

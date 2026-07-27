@@ -6,6 +6,8 @@ import {
   buildingType,
   placeableTypes,
   type BuildingFamily,
+  planRoads,
+  type PlanKind,
   type RoadClass,
   type Vec2,
 } from '../sim';
@@ -62,6 +64,9 @@ async function main(): Promise<void> {
   let paving = false;
   type TerraMode = 'raise' | 'lower' | 'level';
   let terra: TerraMode | null = null;
+  let plan: PlanKind | null = null;
+  let planAngle = 0;
+  const PLAN_SIZE = 105;
   const BRUSH_RADIUS = 26;
   const BRUSH_STRENGTH = 1.5;
   let roadClass: RoadClass | null = null;
@@ -136,6 +141,10 @@ async function main(): Promise<void> {
       btnPave?.setAttribute('aria-pressed', 'false');
       terra = null;
       for (const btn of Object.values(terraButtons ?? {})) {
+        btn.setAttribute('aria-pressed', 'false');
+      }
+      plan = null;
+      for (const btn of Object.values(planButtons ?? {})) {
         btn.setAttribute('aria-pressed', 'false');
       }
     }
@@ -229,6 +238,37 @@ async function main(): Promise<void> {
     btnFlow.setAttribute('aria-pressed', String(world.useFlow));
   });
 
+  const planButtons: Record<string, HTMLButtonElement> = {
+    crescent: el<HTMLButtonElement>('plan-crescent'),
+    square: el<HTMLButtonElement>('plan-square'),
+    grid: el<HTMLButtonElement>('plan-grid'),
+  };
+
+  function setPlan(kind: PlanKind | null): void {
+    plan = kind;
+    for (const [k, btn] of Object.entries(planButtons)) {
+      btn.setAttribute('aria-pressed', String(k === kind));
+    }
+    view.clearGhost();
+    if (kind) {
+      selectType(null);
+      setRoadClass(null);
+      setPaving(false);
+      setTerra(null);
+      plan = kind;
+      for (const [k, btn] of Object.entries(planButtons)) {
+        btn.setAttribute('aria-pressed', String(k === kind));
+      }
+    }
+  }
+
+  for (const [kind, btn] of Object.entries(planButtons)) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', () =>
+      setPlan(plan === kind ? null : (kind as PlanKind)),
+    );
+  }
+
   const btnBorders = el<HTMLButtonElement>('toggle-borders');
   btnBorders.addEventListener('click', () => {
     view.showBorders = !view.showBorders;
@@ -290,6 +330,10 @@ async function main(): Promise<void> {
   btnPause.addEventListener('click', () => setPaused(!paused));
 
   el('seed-town').addEventListener('click', () => {
+    // The scenario town is a given, not something the player paid for, so it is
+    // granted its materials — with enough left over to actually try a plan.
+    world.economy.stocks.timber += 1400;
+    world.economy.stocks.stone += 1400;
     seedTestTown(world);
     seedRivalTown(world);
     world.rebuildFabric();
@@ -327,6 +371,14 @@ async function main(): Promise<void> {
 
     if (e.button !== 0) return;
     const w = camera.screenToWorld(e.offsetX, e.offsetY, view.currentProjection);
+
+    if (plan) {
+      if (world.applyPlan({ kind: plan, at: w, size: PLAN_SIZE, angle: planAngle })) {
+        world.rebuildFabric();
+        view.markBuildingsDirty();
+      }
+      return;
+    }
 
     if (terra) {
       sculpting = true;
@@ -402,8 +454,13 @@ async function main(): Promise<void> {
   );
 
   window.addEventListener('keydown', (e) => {
+    if (e.key === '[' || e.key === ']') {
+      planAngle += e.key === '[' ? -Math.PI / 12 : Math.PI / 12;
+      return;
+    }
     if (e.key === 'Escape') {
-      if (terra) setTerra(null);
+      if (plan) setPlan(null);
+      else if (terra) setTerra(null);
       else if (paving) setPaving(false);
       else if (roadClass) setRoadClass(null);
       else selectType(null);
@@ -430,6 +487,9 @@ async function main(): Promise<void> {
   const rRender = el('r-render');
   const rTerritory = el('r-territory');
   const rTerrDetail = el('r-terrdetail');
+  const sTimber = el('s-timber');
+  const sStone = el('s-stone');
+  const sFood = el('s-food');
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
@@ -439,6 +499,16 @@ async function main(): Promise<void> {
   const rTicks = el('r-ticks');
 
   function updateReadout(): void {
+    const stocks = world.economy.stocks;
+    const rates = world.economy.rates;
+    sTimber.textContent = String(Math.floor(stocks.timber));
+    sStone.textContent = String(Math.floor(stocks.stone));
+    sFood.textContent = String(Math.floor(stocks.food));
+    // Falling stocks are flagged, since a trend matters more than a level.
+    sTimber.parentElement!.classList.toggle('low', rates.timber <= 0 && stocks.timber < 30);
+    sStone.parentElement!.classList.toggle('low', rates.stone <= 0 && stocks.stone < 30);
+    sFood.parentElement!.classList.toggle('low', rates.food < 0);
+
     rCount.textContent = String(world.buildings.length);
     rStreets.textContent = `${world.roads.length} / ${world.fabric.paths.length}`;
     rPeople.textContent = String(world.crowd.people.length);
@@ -515,7 +585,13 @@ async function main(): Promise<void> {
       }
     }
 
-    if (cursor && paving) {
+    if (cursor && plan) {
+      const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
+      view.clearGhost();
+      for (const r of planRoads({ kind: plan, at: w, size: PLAN_SIZE, angle: planAngle })) {
+        view.setRoadPreview(r.points, r.cls);
+      }
+    } else if (cursor && paving) {
       const w = camera.screenToWorld(cursor.x, cursor.y, view.currentProjection);
       view.clearGhost();
       const found = world.pathNear(w, 22);

@@ -56,6 +56,8 @@ export interface BuildingType {
   evolvesTo?: Partial<Record<Character, string>>;
   /** Housing that has already evolved does not evolve again in the MVP. */
   isEvolved?: boolean;
+  /** What it costs to build. Absent means free — greens and the like. */
+  cost?: { timber?: number; stone?: number; food?: number };
 }
 
 export interface Building {

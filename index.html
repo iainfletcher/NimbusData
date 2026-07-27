@@ -118,6 +118,20 @@
         color: var(--accent);
       }
 
+      #stocks {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      #stocks b { color: var(--text); font-weight: 600; }
+      #stocks .low b { color: #e08a6a; }
+
       #readout {
         margin-top: 10px;
         padding-top: 10px;
@@ -180,6 +194,11 @@
         <button id="toggle-pause" aria-pressed="false">Pause</button>
       </div>
       <div class="row">
+        <button id="plan-crescent">Crescent</button>
+        <button id="plan-square">Square</button>
+        <button id="plan-grid">Grid</button>
+      </div>
+      <div class="row">
         <button id="terra-raise">Raise</button>
         <button id="terra-lower">Lower</button>
         <button id="terra-level">Level</button>
@@ -197,6 +216,11 @@
       <div class="row">
         <button id="seed-town">Seed test town</button>
         <button id="clear-town">Clear</button>
+      </div>
+      <div id="stocks">
+        <span><b id="s-timber">0</b> timber</span>
+        <span><b id="s-stone">0</b> stone</span>
+        <span><b id="s-food">0</b> food</span>
       </div>
       <div id="readout">
         <div class="line"><span class="k">Under cursor</span><span id="r-dominant">—</span></div>
@@ -225,6 +249,8 @@
       <br /><b>Pave a path</b> turns a worn track into a road, keeping its wander.
       <br /><b>Raise / Lower / Level</b> reshape the ground — drag to sculpt. Water
       re-derives as you go, so dam a valley and a lake forms behind it.
+      <br /><b>Crescent / Square / Grid</b> lay out a composition — click to place,
+      <kbd>[</kbd> <kbd>]</kbd> to rotate. Buildings then snap to its frontage.
     </div>
 
     <script type="module" src="/src/app/main.ts"></script>

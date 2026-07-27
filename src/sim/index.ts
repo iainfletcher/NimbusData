@@ -14,4 +14,7 @@ export * from './decor';
 export * from './people';
 export * from './flood';
 export * from './territory';
+export * from './land';
+export * from './economy';
+export * from './plans';
 export * from './world';

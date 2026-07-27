@@ -23,7 +23,7 @@ export function seedTestTown(world: World): void {
       at: { x: c + 150, y: c - 130 },
       angle: 0.35,
       length: 170,
-      core: ['foundry', 'tannery', 'sawmill', 'workshop', 'workshop'],
+      core: ['foundry', 'tannery', 'sawmill', 'quarry', 'workshop'],
       cottages: 9,
     },
     {
@@ -47,7 +47,7 @@ export function seedTestTown(world: World): void {
       at: { x: c - 210, y: c - 40 },
       angle: 0.75,
       length: 140,
-      core: ['farm', 'watermill', 'farm'],
+      core: ['farm', 'watermill', 'farm', 'sawmill'],
       cottages: 5,
     },
   ];
