@@ -1,0 +1,30 @@
+{
+  "name": "toy-city",
+  "version": "1.0.0",
+  "description": "Prototype for a medieval-to-modern city builder: district character and organic fabric.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check:layers": "node scripts/check-layers.mjs",
+    "check": "npm run check:layers && npm run typecheck",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:41729/git/iainfletcher/NimbusData"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "playwright": "^1.62.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "dependencies": {
+    "pixi.js": "^8.19.0"
+  },
+  "private": true,
+  "type": "module"
+}

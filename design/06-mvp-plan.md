@@ -2,6 +2,19 @@
 
 Organised around the actual question: **what blocks writing code?**
 
+## Decisions taken
+
+| | Decision | Consequence |
+|---|---|---|
+| **D1** | **Game B — the city builder** | `02`'s recommendation is set aside deliberately. Game A is shelved, not cancelled |
+| **D2** | **TypeScript + PixiJS**, sim core engine-agnostic | Fast iteration; Godot migration stays a rendering rewrite, not a rewrite |
+| **D3** | **Both views** — isometric world, top-down plan | Tests aesthetic and fabric legibility from day one |
+| **D4** | **A foundation to keep building on** | Architecture discipline from the first commit; the layer boundary is enforced, not merely intended |
+
+D4 raises the bar on D2. Since this code survives, the boundary between simulation
+and rendering is enforced by a check in CI rather than by good intentions — see
+`ARCHITECTURE.md`.
+
 ---
 
 ## 1. Decisions that genuinely block
@@ -147,14 +160,38 @@ authored street templates rather than procedural generation.
 
 | # | Milestone | Proves |
 |---|---|---|
-| **0** | Repo, build, empty map renders, camera pans and zooms | Stack works |
-| **1** | Place a building. It appears. Terrain blocks placement | Core interaction |
-| **2** | Character field: emit, diffuse, and **debug-visualise it** | The field maths |
-| **3** | Dominant + coherence computed and visualised per cell | `04`'s core |
-| **4** | Organic fabric: streets and infill generate between buildings | **The big risk** |
-| **5** | Buildings evolve by dominant character, 2–3 steps | The chain's payoff |
-| **6** | Visual character identity — palettes and idioms per character | Legibility |
-| **7** | Ambient agents | Aliveness |
+| **0** | ✅ Repo, build, empty map renders, camera pans and zooms | Stack works |
+| **1** | ✅ Place a building. It appears. Terrain blocks placement | Core interaction |
+| **2** | ✅ Character field: emit, diffuse, and **debug-visualise it** | The field maths |
+| **3** | ✅ Dominant + coherence computed and visualised per cell | `04`'s core |
+| **4** | ⬜ Organic fabric: streets and infill generate between buildings | **The big risk** |
+| **5** | ✅ Buildings evolve by dominant character, 2–3 steps | The chain's payoff |
+| **6** | ⬜ Visual character identity — palettes and idioms per character | Legibility |
+| **7** | ⬜ Ambient agents | Aliveness |
+
+Both projections were built up front rather than at milestone 6, since D3 chose
+both views and the plan view is the honest way to judge fabric later.
+
+### What the first build shows
+
+Seeding the test town and turning on the character overlay produces three
+readable quarters, and two things worth noting happened without being designed for:
+
+- **The tavern's Raucous bleeds into the market's Mercantile**, showing as a rose
+  smudge on one edge of the trading quarter. Exactly the discord `04` predicts,
+  visible without a number.
+- **The church quarter is visibly less coherent than the other two**, because
+  Devout and Verdant are competing there. That's the coherence mechanic doing its
+  job as a diagnostic, and it suggests the green and the orchard want to be
+  further from the church than the test town puts them.
+
+Housing evolution reads well: merchant houses appear around the market, workers'
+terraces around the foundry, close cottages and garden cottages by the church.
+
+**Caveat on success criterion 1.** Quarters currently read as different because
+each character has a placeholder *colour*. That's a weak proxy — the real test is
+whether they read from architecture, materials and street furniture (`04` §5),
+which is milestone 6. Colour passing is necessary but nowhere near sufficient.
 
 Milestone 4 is where this either works or doesn't, so it's worth reaching fast —
 possibly even reordering it earlier with a hardcoded character field, to fail cheap
