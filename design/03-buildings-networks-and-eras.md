@@ -191,13 +191,67 @@ arithmetic. All of it fails Test 1.
 
 **The rules:**
 - You lay lines. Connected = served. Not connected = not served. That's the model.
-- Sources (well, reservoir, gasworks, power station) have a generous radius; lines
-  extend it.
+- Sources (well, reservoir, gasworks) have a generous radius; lines extend it.
 - **No capacity number to balance.** When a source is overstretched it **visibly
-  strains** — the reservoir level drops, the power station smokes harder, the
-  pressure in the fountain falls. You see it and you build another.
+  strains** — the reservoir level drops, the pressure in the fountain falls. You see
+  it and you build another.
 - No cascading failures. No blackout to diagnose. Nothing to *tune*, only things to
   *extend*.
+
+### The exception: electricity is not a reach problem
+
+This model works for wells, conduits, sewers and gas, and it **breaks for
+electricity** — which was open question 5 and now has an answer.
+
+The failure is on Test 2, not Test 1. Laying power lines is spatial, but by the
+modern era **every placement is equivalent**: the grid reaches everywhere, so no
+two pylon routes produce different outcomes. Reach stops being a decision the moment
+reach is universal. Pylon placement is therefore pure labour and should be cut.
+
+**The grid spreads on its own**, like street infill. You never draw it.
+
+**The decision relocates to generation**, where it's still spatial and very
+consequential:
+
+> **The question isn't where the wires go. It's whose neighbourhood pays for the
+> light.**
+
+A coal station is an enormous Industrious emitter that blights a wide area
+downwind (`04`, and this is where wind earns its keep). A hydro scheme means
+**damming a valley** — permanently reshaping terrain and drowning whatever was
+there, possibly an Antique village. A coastal station puts it out of the way at
+the price of distance and a ruined shoreline.
+
+Every option is a real sacrifice of character somewhere, and that's a far better
+decision than routing.
+
+### Demand as event, not as meter
+
+The second half is demand — handled as **occasional drama rather than a running
+number**.
+
+Demand spikes at legible, characterful moments: a hard winter evening, a national
+broadcast, a festival. If you're short, **the lights dim across the town.**
+
+That's an event you respond to, not a meter you watch. The failure state is soft,
+atmospheric and beautiful rather than punishing — a dimming town costs you
+character and mood, not a crashed economy. And it prompts the only action that
+matters: build more generation, and decide again where it goes.
+
+No sliders, no load balancing, no priority tables.
+
+### The arc this implies
+
+Worth stating, because it's thematically lovely: **utilities progress from spatial
+to systemic, and that transition is the story of modernity.**
+
+Medieval, you walk to the well — infrastructure is a place. Modern, power arrives
+invisibly and you only notice it when it fails. Electricity being *less* spatial
+than a well isn't a design failure; it's the point, provided the decision
+relocates somewhere that still has teeth.
+
+(**Telephone** is even weaker and probably isn't a utility at all — better as a
+modifier on other systems, or cut.)
 
 ---
 
@@ -219,6 +273,25 @@ So eras feel different because **you're doing different engineering**, not becau
 the art changed. Sewers arriving is a genuine event — whole districts become
 liveable that never could be before, which visibly moves vibe, evolution, culture
 and territory in one cascade.
+
+### The modern era's puzzle isn't a network — it's what you're willing to destroy
+
+Since networks stop being spatial by the modern era (see §5), the last era needs a
+different engineering problem. It has an obvious and very strong one:
+
+> **Motor traffic demands wide roads. Wide roads mean cutting through your old
+> quarters. Your old quarters are your Antique character — your strongest cultural
+> pressure and your hardest ground to lose.**
+
+So modernisation becomes a genuine dilemma with real cost on both sides, aimed
+squarely at the thing the player is most attached to. Do you drive a road through
+the medieval core to keep the town working, or preserve it and accept congestion,
+decline, and a town that's falling behind?
+
+This is exactly what happened to British towns in the 1960s, it engages every
+system already built — Antique, coherence, cultural pressure, evolution — and it
+turns the final era into a question about what a town is *for* rather than a
+construction task. Best possible late game for this design.
 
 ### How eras arrive
 
@@ -261,7 +334,13 @@ vertex is labour.
    game? Genuinely unsure. Cheap to test.
 4. **Era pacing.** Four eras across one session is a lot of content. Might be
    better as fewer, longer eras — or the campaign spans several sessions.
-5. **Do utilities have enough game in them** once capacity is removed? Reach alone
-   may be too thin by the modern era, when everything is trivially connected.
-   Sewers and gas have strong vibe effects, which may carry it — electricity may
-   not.
+5. ~~Do utilities have enough game in them once capacity is removed?~~ **Resolved:**
+   reach carries wells, conduits, sewers and gas. Electricity moves to generation
+   siting plus demand-as-event (§5), and the modern era's real puzzle is
+   modernisation versus preservation (§6).
+6. **Is dimming enough of a consequence?** A soft, atmospheric failure state might
+   be *too* soft — if shortage costs only mood, players may rationally ignore it.
+   May need it to suppress evolution or coherence while it persists.
+7. **Does the modern era arrive too late to be enjoyed?** If the preservation
+   dilemma is the best content in the game, burying it behind three prior eras is a
+   risk. A scenario that starts there may be worth having.
