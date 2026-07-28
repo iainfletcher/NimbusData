@@ -209,6 +209,32 @@ arithmetic. All of it fails Test 1.
 - No cascading failures. No blackout to diagnose. Nothing to *tune*, only things to
   *extend*.
 
+### Built — the medieval half, and it needed no lines at all
+
+The medieval end of this is implemented (`src/sim/needs.ts`), and the interesting
+finding is that **the rule survives without the network**. There are no conduits
+yet, no lines to lay, and the model still works, because at this era the source
+*is* the service:
+
+> **A need is met if the thing that meets it is within walking distance.**
+
+Four needs, and the reaches are deliberately unequal, because they are not four
+copies of one rule — water is fetched daily and by children (85m), an alehouse is
+an evening walk (130m), a church a Sunday one (165m), a market a weekly trip that
+can be across town (210m). Getting those different is most of what stops the
+system feeling like one rule stamped four times.
+
+Water also confirms the section's own line — *medieval, you walk to the well;
+infrastructure is a place* — more literally than intended. **Fresh water is
+satisfied by the terrain, not only by a building.** A house within reach of a
+stream or a lake needs no well at all, so the hydrology that the game has always
+simulated finally pays for itself in the economy rather than only in the view, and
+"build by the river" becomes an economic argument rather than a scenic one.
+
+What this leaves for the later eras is exactly what §5 asks for: conduits and
+fountains **extend** the reach of a source rather than adding capacity to it, and
+nothing about the medieval rule has to change for them to arrive.
+
 ### The exception: electricity is not a reach problem
 
 This model works for wells, conduits, sewers and gas, and it **breaks for
@@ -311,6 +337,42 @@ Not a tech tree to click through — a tech tree is a menu, and menus are admin.
 building) and **arrive as events**: *the railway is coming.* That fits real-time
 with interruptions from `00`, Axis 6, and it makes progression a story rather than
 a purchase.
+
+#### Built — four ages inside the medieval era, and what actually made it a game
+
+`src/sim/ages.ts`. Hamlet → Village → Market Town → Borough, all inside the
+medieval era: the era arc above is between *networks*, and this is the arc within
+one of them. It exists because the catalogue used to be open from the first
+second — every building available before a single person lived there, which is a
+level editor rather than a game. Nothing was ever earned and the twenty-fifth
+building was no more interesting than the first.
+
+The section's rule held up exactly as written. An age advances when the town is
+**demonstrably that kind of place** — enough people, the right buildings actually
+standing, the needs of the last age actually met — and there is nothing to
+allocate, nothing to research and nothing to optimise. A research-points tree was
+considered and rejected on `00`'s terms: points to spend is a currency, a screen
+and a set of ratios, which is admin with no expression.
+
+> **Progress is something your town achieves, not a currency you spend.**
+
+**The bit that stops it being an unlock list**, and the reason it is worth having
+at all: each age also **demands more of housing**. A hamlet wants water. A village
+wants water and a church. A market town wants a market and an alehouse too. So
+advancing is *not a pure reward* — it raises the standard, and a town that grows
+faster than it can serve itself stalls on its own success. Measured: a cottage
+with a well beside it is served 1.00 as a hamlet and 0.50 the moment the town
+becomes a village, and stops evolving until a chapel goes up.
+
+Two smaller decisions worth keeping:
+
+- **Locked buildings are shown, not hidden.** Hiding them would shuffle the
+  palette under the player's hand every time the town grew up and, worse, keep the
+  arc a secret. A greyed keep with *Borough* beside it is a promise.
+- **The age is the player's town growing up, not a shared tech level.** The rival
+  is a neighbour and builds from the whole catalogue. Gating it on your progress
+  would mean your hamlet held its army back, and would quietly make the frontier
+  easier the slower you played.
 
 ### The hard rule: eras never obsolete your buildings
 

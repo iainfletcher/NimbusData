@@ -1,4 +1,4 @@
-import { OWNER_RIVAL, World, WORLD_SIZE, buildingType, makeRng, type Vec2 } from '../sim';
+import { AGES, OWNER_RIVAL, World, WORLD_SIZE, buildingType, makeRng, type Vec2 } from '../sim';
 
 /**
  * Lays down the arrangement the MVP is judged against (design/06 §3), the way a
@@ -17,13 +17,19 @@ export function seedTestTown(world: World): void {
   const rng = makeRng(world.seed ^ 0x5eed);
   const c = WORLD_SIZE / 2;
 
+  // A scenario town is one that has *already* grown up — it has a market cross
+  // and a church in it — so it arrives at the last age rather than fighting the
+  // hamlet's catalogue on the way in. Growing a town from nothing is the game;
+  // this button exists to skip straight to a finished one.
+  world.ages.index = AGES.length - 1;
+
   const quarters = [
     {
       // Working quarter, downriver and set apart.
       at: { x: c + 150, y: c - 130 },
       angle: 0.35,
       length: 170,
-      core: ['foundry', 'tannery', 'sawmill', 'quarry', 'workshop'],
+      core: ['foundry', 'tannery', 'sawmill', 'quarry', 'workshop', 'well'],
       cottages: 9,
     },
     {
@@ -39,7 +45,7 @@ export function seedTestTown(world: World): void {
       at: { x: c + 60, y: c + 250 },
       angle: 2.0,
       length: 160,
-      core: ['church', 'chapel', 'almshouse', 'green', 'orchard'],
+      core: ['church', 'chapel', 'almshouse', 'green', 'orchard', 'well'],
       cottages: 9,
     },
     {

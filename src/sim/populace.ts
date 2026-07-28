@@ -66,7 +66,7 @@ export interface PopulaceReport {
   /** Net change per tick, for the readout: a trend matters more than a level. */
   change: number;
   /** Why the town is not growing, when it is not. */
-  blocked: 'room' | 'food' | 'leaving' | null;
+  blocked: 'room' | 'food' | 'leaving' | 'unserved' | null;
 }
 
 export class Populace {
@@ -84,6 +84,7 @@ export class Populace {
     food: number,
     hungry: boolean,
     season: SeasonEffects,
+    coverage = 1,
   ): void {
     let capacity = 0;
     for (const b of buildings) {
@@ -108,9 +109,12 @@ export class Populace {
       // with.
       this.report.blocked = 'food';
     } else {
-      // Winter is not a time to move house.
-      this.exact += room * ARRIVE_RATE * season.harvest;
-      this.report.blocked = null;
+      // Winter is not a time to move house — and neither is anywhere that
+      // cannot reach a well. Service scales arrivals rather than gating them,
+      // so a badly served town grows *slowly* instead of stopping dead, which
+      // is both truer and much easier to diagnose.
+      this.exact += room * ARRIVE_RATE * season.harvest * Math.max(0.05, coverage);
+      this.report.blocked = coverage < 0.6 ? 'unserved' : null;
     }
 
     this.exact = Math.max(0, Math.min(capacity, this.exact));

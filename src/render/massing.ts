@@ -209,6 +209,43 @@ function derive(typeId: string, variant: number): Block[] {
       break;
     }
 
+    case 'well': {
+      // A wellhead: a low stone drum, and a canopy carried on posts above it.
+      //
+      // Composed explicitly because the general rules produce a small house,
+      // and a small house is precisely what a well must not look like — it is
+      // the only thing in the catalogue whose whole job is to be recognised
+      // from across a quarter at a glance.
+      blocks.length = 0;
+      blocks.push({
+        u: 0, v: 0,
+        width: 2.4, depth: 2.4,
+        base: 0, height: 0.95,
+        rise: 0, form: 'flat',
+        ridgeAlongWidth: true, overhang: 0.12,
+      });
+      // Two posts, standing clear of the drum so the gap is visible.
+      for (const side of [-1, 1]) {
+        blocks.push({
+          u: side * 1.25, v: 0,
+          width: 0.34, depth: 0.34,
+          base: 0.95, height: 1.5,
+          rise: 0, form: 'flat',
+          ridgeAlongWidth: true, overhang: 0,
+          stack: true,
+        });
+      }
+      blocks.push({
+        u: 0, v: 0,
+        width: 3.2, depth: 2.6,
+        base: 2.45, height: 0.12,
+        rise: look.rise, form: 'gable',
+        ridgeAlongWidth: true, overhang: look.overhang ?? 0.55,
+        open: true,
+      });
+      break;
+    }
+
     case 'market':
       // A market hall is a roof on posts standing over an open floor. Given
       // walls it is a barn, and given a cross-wing it is a barn with a porch —

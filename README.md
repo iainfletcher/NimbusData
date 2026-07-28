@@ -110,11 +110,30 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
   there is room and food in the barn, and leave when there is not. A full town's
   readout says *122/122 — no housing*, which is the game asking for something
 - **Problems drawn on the map**, on the building that has them — amber for nobody
-  works here, grey for nothing here to work, red for ground that is not ours
+  works here, grey for nothing here to work, red for ground that is not ours, blue
+  for a household that cannot reach something it needs
+
+- **Household needs, answered by distance.** Water, a church, a market, an
+  alehouse — each met if the thing that meets it is within walking distance, with
+  a different distance for each because they are different errands. No meter, no
+  ratio, no upkeep. Fresh water is a *place* before it is a building, so a house
+  by the stream needs no well and the hydrology finally pays for itself in the
+  economy. This is also what makes the civic half of the catalogue do something:
+  a church was previously an ornament
+- **Four ages, earned rather than researched** — hamlet, village, market town,
+  borough. A town grows up when it is demonstrably that kind of place: enough
+  people, the right buildings standing, the last age's needs actually met. There
+  are no research points, nothing to allocate and nothing to optimise. Each age
+  also *demands more* of housing, so advancing is not a pure reward — a town that
+  grows faster than it can serve itself stalls on its own success
+- A goal panel that says what the town is working toward in plain words, and a
+  palette that shows locked buildings with the age that brings them, because the
+  arc should be a promise rather than a secret
 
 **Not yet built:** planned-fabric amplification (`design/05` §3); broadening
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval
-era.
+era — though the four ages inside it are the arc that era progression will hang
+on (`design/03` §6).
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

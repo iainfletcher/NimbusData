@@ -209,6 +209,17 @@
       }
       button.item .cost .short { color: #e08a6a; }
       button.item .cost .jobs { color: #7fa7c8; }
+      button.item .cost .serves { color: #8bbf8f; }
+      /*
+       * Buildings from a later age are shown, not hidden.
+       *
+       * Hiding them would make the palette shuffle under the player's hand
+       * every time the town grew up, and — worse — it would keep the arc a
+       * secret. A greyed keep with "Borough" beside it is a promise: this is
+       * what this town could become.
+       */
+      button.item .cost .locked { color: var(--accent); opacity: 0.85; }
+      button.item.locked { opacity: 0.5; }
       button.item[disabled] { opacity: 0.42; cursor: default; }
       button.item[disabled]:hover { border-color: transparent; }
       button.item:hover { border-color: var(--line); }
@@ -294,6 +305,91 @@
       }
       #readout .k { color: var(--muted); }
 
+      /*
+       * What the town is working toward, in plain words.
+       *
+       * This is the one piece of UI that answers "what should I do next", so it
+       * sits under the town's name rather than in the readout column: the goal
+       * belongs with the town's identity, not with its diagnostics. It says what
+       * is missing, never how to get it — "a chapel" is a goal, "+1 faith
+       * capacity" is a spreadsheet.
+       */
+      #goal {
+        top: 54px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 320px;
+        padding: 9px 12px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      #goal.done { opacity: 0.6; }
+
+      .goal-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+      }
+
+      #goal-title {
+        font: 500 12px/1.2 ui-serif, Georgia, serif;
+        letter-spacing: 0.05em;
+        color: var(--text);
+      }
+
+      #goal-pct {
+        font-size: 11px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      #goal-bar {
+        height: 3px;
+        border-radius: 2px;
+        background: var(--panel-2);
+        overflow: hidden;
+      }
+      #goal-bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        transition: width 600ms ease;
+      }
+
+      #goal-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      #goal-list span::before {
+        content: '·';
+        margin-right: 5px;
+        color: var(--line);
+      }
+      #goal-list span:first-child::before { content: none; }
+
+      /*
+       * What households cannot reach. Amber because it is the same fact the blue
+       * markers on the map are reporting, counted — the panel tells you how many
+       * and the map tells you where.
+       */
+      #goal-needs {
+        font-size: 11.5px;
+        color: #e0b06a;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+      }
+      #goal-needs:empty { display: none; }
+
+      #townplate #r-age { color: var(--accent); }
+
       #townplate span + span {
         margin-left: 14px;
         padding-left: 14px;
@@ -335,7 +431,18 @@
   <body>
     <div id="townplate" class="panel">
       <span id="r-townname">—</span>
+      <span id="r-age">—</span>
       <span id="r-when">—</span>
+    </div>
+
+    <div id="goal" class="panel">
+      <div class="goal-head">
+        <span id="goal-title">—</span>
+        <span id="goal-pct">—</span>
+      </div>
+      <div id="goal-bar"><i></i></div>
+      <div id="goal-list"></div>
+      <div id="goal-needs"></div>
     </div>
 
     <div id="palette" class="panel">

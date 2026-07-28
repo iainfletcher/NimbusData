@@ -274,8 +274,45 @@ the only way to find out why is to click every building.
 
 Until posture exists, problems are **drawn on the map, on the building that has
 them**: amber for nobody works here, grey for nothing here to work, red for ground
-that is not really ours. Three colours, no legend, and each has an obvious fix —
-which is the test for whether a warning is worth showing at all.
+that is not really ours, blue for a household that cannot reach something it needs.
+No legend, and each has an obvious fix — which is the test for whether a warning is
+worth showing at all.
+
+> **These markers did not work for their entire first life, and the reason is worth
+> keeping.** Each was built as a diamond from four world-space points offset along
+> ±x and ±y. In an isometric projection screen x is `(x − y) × k`, so a step of
+> `(+1, +1)` moves purely in depth and not sideways at all: the marker collapsed to
+> a zero-width vertical sliver. It was invisible at every zoom, on a map that had
+> eleven of them on it, and nothing caught it — the trial harness cannot see, and
+> the screenshots were of a town nobody had checked for alerts. Alerts are
+> *interface*: they belong in projected space, the same shape and size whichever
+> way the world is turned.
+
+#### The fourth thing, and it is what made the civic half of the catalogue real
+
+Three things above turned the shopping list into a game. A fourth was still
+missing, and it was hiding in plain sight: **the church, the market and the tavern
+did nothing.** They emitted character and were otherwise ornaments. Half the
+catalogue was decoration you built because it looked nice.
+
+> **A household need is met if the thing that meets it is within walking distance.
+> There is no meter, no ratio and no upkeep — only whether it is near enough.**
+
+So needs are *spatial*, exactly like jobs, and they are answered by looking at the
+map rather than by reading a panel. A quarter with no well is a quarter you can
+see has no well. Nobody works out how many wells a hundred people require, because
+the question is never "how many" — it is "is there one near this house".
+
+Four needs, and the reaches are deliberately different, because they are not four
+copies of one rule: water is fetched daily and by children (85m), a market is a
+weekly trip and can be across town (210m). Water is also the one need that is a
+**place** before it is a building — a house beside a stream needs no well, which is
+the first time the hydrology the game has always simulated pays for itself in the
+economy rather than only in the view.
+
+Measured: a house on dry ground is served 0.00; a well 260m off changes nothing;
+a well next door takes it to 1.00. Two identical rustic hamlets, one with a well
+and one without — **4 of 5 cottages evolved with it, 0 of 5 without.**
 
 ### Axis 4 — Territory and combat
 

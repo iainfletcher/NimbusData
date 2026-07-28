@@ -15,6 +15,7 @@ import {
   RESOURCES,
   WALK_TO_WORK,
   type Person,
+  type ProblemKind,
   type Season,
   type Vec2,
   type Warband,
@@ -100,7 +101,7 @@ export class WorldView {
 
   showOverlay = false;
   showProblems = true;
-  private problemCache: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] = [];
+  private problemCache: { building: Building; kind: ProblemKind }[] = [];
   private problemTick = -1;
   /**
    * Which overlay the diagnostic layer is showing.
@@ -1511,39 +1512,61 @@ export class WorldView {
   /**
    * A marker floating over a building that is not working, and why.
    *
-   * Colour carries the reason, so three states are distinguishable without a
+   * Colour carries the reason, so the states are distinguishable without a
    * legend: **amber** nobody works here, **grey** nothing here to work, **red**
-   * this ground is not really ours. It bobs, because a static icon over a static
-   * town disappears into the roofline within about ten seconds.
+   * this ground is not really ours, **blue** this household cannot reach
+   * something it needs. It bobs, because a static icon over a static town
+   * disappears into the roofline within about ten seconds.
+   *
+   * The blue one is drawn smaller and dimmer than the rest on purpose. A works
+   * with nobody in it is one broken thing; a quarter with no well is *forty*
+   * houses all reporting the same fact at once, and at full size that reads as
+   * a catastrophe rather than as "put a well here". Small and many is the right
+   * shape for it — the eye reads the wash, not the count.
    */
   private drawProblem(
     g: Graphics,
-    problem: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' },
+    problem: { building: Building; kind: ProblemKind },
     plan: boolean,
   ): void {
     const b = problem.building;
     const colour = PROBLEM_COLOURS[problem.kind];
+    const soft = problem.kind === 'unserved';
+    const scale = soft ? 0.62 : 1;
+    const alpha = soft ? 0.72 : 0.95;
     const ground = this.world.terrain.heightAt(b.pos.x, b.pos.y);
     const look = appearanceOf(b.typeId);
     const bob = Math.sin(this.elapsed * 2.2 + b.id) * 0.5;
-    const top = ground + look.eaves + look.rise + 4.5 + bob;
+    const top = ground + look.eaves + look.rise + (soft ? 3.2 : 4.5) + bob;
 
     if (plan) {
       const p = this.project(b.pos.x, b.pos.y, ground);
-      g.circle(p.x, p.y, 2.2).fill({ color: colour, alpha: 0.9 });
+      g.circle(p.x, p.y, 2.2 * scale).fill({ color: colour, alpha });
       return;
     }
 
-    const tip = this.project(b.pos.x, b.pos.y, top - 1.6);
-    const head = this.project(b.pos.x, b.pos.y, top + 1.6);
-    const left = this.project(b.pos.x - 1.3, b.pos.y - 1.3, top);
-    const right = this.project(b.pos.x + 1.3, b.pos.y + 1.3, top);
+    // Laid out in *projected* space, not world space.
+    //
+    // The first version built the diamond from four world points offset along
+    // ±x and ±y, and in an isometric projection a step of (+1, +1) moves purely
+    // in screen depth — screen x is (x − y) × k, so it does not move sideways at
+    // all. The marker therefore collapsed to a zero-width vertical sliver and
+    // was invisible at every zoom, which is why it had never been seen on a map
+    // that had eleven of them on it. A screen-space marker is also the right
+    // thing on its own terms: an alert is interface, so it should be the same
+    // shape and size whichever way the world is turned.
+    const c = this.project(b.pos.x, b.pos.y, top);
+    const halfW = 1.9 * scale;
+    const halfH = 2.4 * scale;
 
     g.poly([
-      head.x, head.y, right.x, right.y, tip.x, tip.y, left.x, left.y,
+      c.x, c.y - halfH,
+      c.x + halfW, c.y,
+      c.x, c.y + halfH,
+      c.x - halfW, c.y,
     ])
-      .fill({ color: colour, alpha: 0.95 })
-      .stroke({ color: 0x22201c, width: 0.22, alpha: 0.8 });
+      .fill({ color: colour, alpha })
+      .stroke({ color: 0x22201c, width: 0.22, alpha: soft ? 0.5 : 0.8 });
   }
 
   /** A stack at the gable end. Most of what says "somebody lives here". */
@@ -2213,12 +2236,14 @@ const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
 /**
  * Why a building is not working. Amber for people, grey for land, red for
- * ground that is not ours — three colours, no legend needed.
+ * ground that is not ours, blue for a household that cannot reach what it
+ * needs — no legend needed, because each colour is the thing it is short of.
  */
-const PROBLEM_COLOURS = {
+const PROBLEM_COLOURS: Record<ProblemKind, number> = {
   unstaffed: 0xe8a33d,
   barren: 0x9aa0a6,
   unrest: 0xd0503f,
+  unserved: 0x5f9bc4,
 };
 
 /** Wet oak and iron banding, for a mill wheel. */

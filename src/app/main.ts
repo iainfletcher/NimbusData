@@ -6,6 +6,9 @@ import {
   WORLD_SIZE,
   buildingType,
   placeableTypes,
+  ageThatUnlocks,
+  NEED_LABELS,
+  NEED_SHORT,
   type BuildingFamily,
   planRoads,
   type PlanKind,
@@ -195,13 +198,16 @@ async function main(): Promise<void> {
     const stocks = world.economy.stocks;
     const signature =
       `${Math.floor(stocks.timber)},${Math.floor(stocks.stone)},` +
-      `${Math.floor(stocks.iron)},${Math.floor(stocks.food)}`;
+      `${Math.floor(stocks.iron)},${Math.floor(stocks.food)},${world.ages.index}`;
     if (signature === paletteState) return;
     paletteState = signature;
+
+    const unlocked = world.ages.unlocked();
 
     for (const [typeId, btn] of itemButtons) {
       const type = buildingType(typeId);
       const short = type.cost ? world.economy.shortfall(type.cost) : [];
+      const open = unlocked.has(typeId);
       const box = btn.querySelector('.cost');
       if (!box) continue;
 
@@ -213,14 +219,27 @@ async function main(): Promise<void> {
       }
       if (type.jobs) bits.push(`<span class="jobs">${type.jobs} jobs</span>`);
       if (type.houses) bits.push(`<span class="jobs">+${type.houses} people</span>`);
+      // What need it answers, because "a market cross" does not otherwise say
+      // that it is the thing forty houses are waiting for.
+      for (const need of type.serves ?? []) {
+        bits.push(`<span class="serves">${NEED_SHORT[need]}</span>`);
+      }
       if (bits.length === 0) bits.push('<span>free</span>');
+      // The age gate replaces the price rather than joining it: what a keep
+      // costs is not yet the player's problem.
+      if (!open) {
+        const at = ageThatUnlocks(typeId);
+        bits.length = 0;
+        bits.push(`<span class="locked">${at ? at.name : 'Later'}</span>`);
+      }
 
       const html = bits.join('');
       if (box.innerHTML !== html) box.innerHTML = html;
 
-      const affordable = short.length === 0;
-      btn.toggleAttribute('disabled', !affordable);
-      if (!affordable && selectedType === typeId) selectType(null);
+      const buildable = open && short.length === 0;
+      btn.classList.toggle('locked', !open);
+      btn.toggleAttribute('disabled', !buildable);
+      if (!buildable && selectedType === typeId) selectType(null);
     }
   }
 
@@ -496,6 +515,7 @@ async function main(): Promise<void> {
     // granted its materials — with enough left over to actually try a plan.
     world.economy.stocks.timber += 1400;
     world.economy.stocks.stone += 1400;
+    world.economy.stocks.iron += 400;
     seedTestTown(world);
     seedRivalTown(world);
     // A scenario town arrives with people already in it. Without this the whole
@@ -508,6 +528,10 @@ async function main(): Promise<void> {
 
   el('clear-town').addEventListener('click', () => {
     for (const b of [...world.buildings]) world.remove(b.id);
+    // Clear means start over, so the arc starts over too. Ages never regress
+    // during play — a town that loses its market does not become a hamlet again
+    // — but an empty field with the whole catalogue open is not a game.
+    world.ages.index = 0;
     view.markBuildingsDirty();
   });
 
@@ -680,6 +704,14 @@ async function main(): Promise<void> {
   const rStreet = el('r-street');
   const rGround = el('r-ground');
   const rMill = el('r-mill');
+  const rAge = el('r-age');
+  const goalPanel = el('goal');
+  const goalTitle = el('goal-title');
+  const goalPct = el('goal-pct');
+  const goalBar = el('goal-bar').firstElementChild as HTMLElement;
+  const goalList = el('goal-list');
+  const goalNeeds = el('goal-needs');
+  let goalState = '';
   el('r-townname').textContent = world.name;
   let townEvery = -Infinity;
   let renderMs = 0;
@@ -706,7 +738,9 @@ async function main(): Promise<void> {
           ? 'no surplus'
           : pop.blocked === 'leaving'
             ? 'leaving'
-            : '';
+            : pop.blocked === 'unserved'
+              ? 'poorly served'
+              : '';
     sPop.parentElement!.parentElement!.classList.toggle('short', pop.blocked !== null);
 
     const work = world.labour.report;
@@ -764,6 +798,7 @@ async function main(): Promise<void> {
         : '—';
     }
     rTicks.textContent = String(world.ticks);
+    updateGoal();
 
     if (!cursor) {
       rDominant.textContent = '—';
@@ -800,6 +835,58 @@ async function main(): Promise<void> {
 
     const hit = world.buildingAt(w.x, w.y);
     rBuilding.textContent = hit ? buildingType(hit.typeId).name : '—';
+  }
+
+  /**
+   * What the town is working toward, and what its households cannot reach.
+   *
+   * Two blocks, and the split matters. The top one is the *goal*, phrased as
+   * things to build — "a chapel", "110 people" — because an objective the player
+   * can read and act on without decoding anything is the whole point of having
+   * ages rather than a tech tree. The bottom is what is currently wrong, counted
+   * per need, and it pairs with the blue markers on the map: the panel says how
+   * many, the map says where.
+   *
+   * Rebuilt only when the text would change. The requirements move on the needs
+   * clock — every fifteen ticks at most — so rewriting this at sixty frames a
+   * second would be pure waste (design/07, the quarter-label lesson).
+   */
+  function updateGoal(): void {
+    const state = world.ages.progress(
+      world.buildings,
+      world.populace.report.population,
+      world.needs.coverage,
+    );
+    const next = world.ages.next;
+    const report = world.needs.report;
+
+    const wants = world.ages.demands
+      .filter((n) => report.short[n] > 0)
+      .map((n) => `${report.short[n]} homes want ${NEED_LABELS[n].toLowerCase()}`);
+
+    const signature =
+      `${state.index}|${state.outstanding.join('|')}|${wants.join('|')}`;
+    if (signature === goalState) return;
+    goalState = signature;
+
+    rAge.textContent = state.age.name;
+
+    if (state.final) {
+      goalTitle.textContent = `A borough. ${state.age.blurb}`;
+      goalPct.textContent = '';
+      goalBar.style.width = '100%';
+      goalPanel.classList.add('done');
+    } else {
+      goalTitle.textContent = `Toward a ${next!.name.toLowerCase()} — ${next!.blurb}`;
+      goalPct.textContent = `${Math.round(state.progress * 100)}%`;
+      goalBar.style.width = `${Math.round(state.progress * 100)}%`;
+      goalPanel.classList.remove('done');
+    }
+
+    goalList.innerHTML = state.outstanding
+      .map((s) => `<span>${s}</span>`)
+      .join('');
+    goalNeeds.innerHTML = wants.map((s) => `<span>${s}</span>`).join('');
   }
 
   // ---- Quarter names, drawn on the map ------------------------------------

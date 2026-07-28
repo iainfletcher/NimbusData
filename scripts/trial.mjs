@@ -72,6 +72,8 @@ const {
   OWNER_PLAYER,
   OWNER_RIVAL,
   buildingType,
+  AGES,
+  NEED_REACH,
 } = sim;
 
 let failures = 0;
@@ -103,6 +105,11 @@ function freshWorld(seed = 20260727) {
   // keep everywhere on the map and half these trials report "no ground", which
   // is what happened the first time iron was added.
   world.economy.stocks.iron = 9000;
+  // And the whole catalogue, for the same reason. Most of these trials are
+  // about territory, labour or the field, not about the era arc — gating them
+  // behind a hamlet's unlocks would just be the iron mistake a second time.
+  // The two trials that *are* about ages set the index themselves.
+  world.ages.index = AGES.length - 1;
   return world;
 }
 
@@ -117,6 +124,45 @@ function siteNear(world, x, y, typeId = 'cottage') {
     }
   }
   return null;
+}
+
+/**
+ * Buildable ground with no fresh water within a household's reach of it.
+ *
+ * Water is a *place* before it is a building — a house beside a stream needs no
+ * well — so any trial about wells has to start somewhere dry, or it measures
+ * the hydrology instead.
+ */
+function drySiteNear(world, x, y, typeId = 'cottage') {
+  for (let r = 0; r < 520; r += 12) {
+    const steps = r === 0 ? 1 : Math.max(8, Math.round(r / 6));
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const p = { x: x + Math.cos(a) * r, y: y + Math.sin(a) * r };
+      if (!world.canPlace(typeId, p).ok) continue;
+      // Clear by a margin, so the cottages ringing it are dry too.
+      if (world.terrain.freshWaterNear(p, NEED_REACH.water + 40)) continue;
+      return p;
+    }
+  }
+  return null;
+}
+
+/**
+ * Put the four services within reach of a point.
+ *
+ * Housing now needs more than food: a house that cannot reach water, a church, a
+ * market and an alehouse neither evolves nor attracts anybody (`needs.ts`). That
+ * is deliberate, and it means any trial about *evolution* or *arrivals* has to
+ * serve its housing first or it is measuring the needs system by accident. This
+ * is the same confound the gilded-cage trial hit when labour arrived: a new
+ * constraint silently became the thing under test.
+ */
+function serveNeeds(world, at) {
+  for (const typeId of ['well', 'chapel', 'market', 'tavern']) {
+    const p = siteNear(world, at.x, at.y, typeId);
+    if (p) world.place(typeId, p);
+  }
 }
 
 /** Run n ticks. */
@@ -242,6 +288,9 @@ claim(
         const r = p && world.place('cottage', p);
         if (r && r.ok) out.push(r.building);
       }
+      // Both hamlets get their services, so the only difference between them
+      // stays the standing of the ground under them.
+      serveNeeds(world, seedAt);
       return out;
     };
 
@@ -624,6 +673,10 @@ claim(
           const p = siteNear(world, at.x + Math.cos(a) * 40, at.y + Math.sin(a) * 40, 'cottage');
           if (p) world.place('cottage', p);
         }
+        // Served housing, or the needs system throttles arrivals to a trickle
+        // and the "manned" arm turns out to be barely manned — which is what
+        // this trial reported the first time it ran after needs landed.
+        serveNeeds(world, at);
       }
 
       run(world, 30);
@@ -674,6 +727,7 @@ claim(
       const p = siteNear(world, at.x + Math.cos(a) * 40, at.y + Math.sin(a) * 40, 'cottage');
       if (p) world.place('cottage', p);
     }
+    serveNeeds(world, at);
     run(world, 30);
 
     note(`ore on ${share.toFixed(1)}% of the map; a mine on the best seam yields ${world.economy.rates.iron.toFixed(3)} iron/tick`);
@@ -722,6 +776,8 @@ claim(
         if (p && world.place('cottage', p).ok) beds += 3;
       }
     }
+    // A well-served town, so the ceiling under test is housing and not service.
+    serveNeeds(world, heart);
 
     const start = world.populace.report.population;
     run(world, 900);
@@ -821,6 +877,212 @@ claim(
   },
 );
 
+// ---- Needs, and the era arc ------------------------------------------------
+
+claim(
+  'A house too far from a well is short of water, and a well fixes it',
+  'needs.ts — a need is met if the thing that meets it is within walking distance',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0; // Hamlet: water and nothing else.
+    world.rivalActive = false;
+
+    // Dry ground, deliberately: the trial is about the well, and a house beside
+    // a stream is supposed to need no well at all.
+    let heart = null;
+    for (let r = 0; r < 600 && !heart; r += 24) {
+      for (let i = 0; i < 24 && !heart; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        const p = { x: C + Math.cos(a) * r, y: C + Math.sin(a) * r };
+        if (world.canPlace('cottage', p).ok && !world.terrain.freshWaterNear(p, NEED_REACH.water)) {
+          heart = p;
+        }
+      }
+    }
+    if (!heart) return note('no dry ground'), false;
+
+    const house = world.place('cottage', heart).building;
+    run(world, 30);
+    const dry = world.needs.servedOf(house);
+
+    // A well well outside reach changes nothing — the rule is distance, not
+    // ownership, and this is the half that would silently pass if `reaches`
+    // ignored the radius entirely.
+    const far = siteNear(world, heart.x + 260, heart.y, 'well');
+    if (far) world.place('well', far);
+    run(world, 30);
+    const stillDry = world.needs.servedOf(house);
+
+    const near = siteNear(world, heart.x + 22, heart.y + 18, 'well');
+    if (!near) return note('nowhere for a well'), false;
+    world.place('well', near);
+    run(world, 30);
+    const wet = world.needs.servedOf(house);
+
+    note(
+      `served ${dry.toFixed(2)} dry → ${stillDry.toFixed(2)} with a well 260m off → ` +
+        `${wet.toFixed(2)} with one next door`,
+    );
+    return dry === 0 && stillDry === 0 && wet === 1;
+  },
+);
+
+claim(
+  'A house that cannot reach what it needs does not become anything',
+  'needs.ts + world.evolveHousing — service is a precondition of growth, not a bonus',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    // Two identical rustic hamlets. One has a well, the other does not.
+    //
+    // The dry arm has to be sited on genuinely dry ground. The first run of this
+    // trial put it beside a stream, where a well is unnecessary by design — so
+    // it "passed" while proving nothing at all.
+    const hamlet = (x, y, withWell) => {
+      const seedAt = withWell ? siteNear(world, x, y, 'farm') : drySiteNear(world, x, y, 'farm');
+      if (!seedAt) return [];
+      world.place('farm', seedAt);
+      const out = [];
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const p = siteNear(world, seedAt.x + Math.cos(a) * 27, seedAt.y + Math.sin(a) * 27, 'cottage');
+        const r = p && world.place('cottage', p);
+        if (r && r.ok) out.push(r.building);
+      }
+      if (withWell) {
+        const w = siteNear(world, seedAt.x, seedAt.y, 'well');
+        if (w) world.place('well', w);
+      }
+      return out;
+    };
+
+    const served = hamlet(C + 240, C - 220, true);
+    const parched = hamlet(C - 260, C + 220, false);
+    if (served.length === 0 || parched.length === 0) return note('could not seed both'), false;
+
+    run(world, 320);
+    const grew = (list) => list.filter((b) => buildingType(b.typeId).isEvolved).length;
+
+    // Assert the dry arm really is dry, so a stream cannot hand it a pass.
+    const wet = parched.filter((b) => world.terrain.freshWaterNear(b.pos, NEED_REACH.water)).length;
+
+    note(
+      `with a well ${grew(served)}/${served.length} evolved; ` +
+        `without ${grew(parched)}/${parched.length} (${wet} of them on a stream)`,
+    );
+    return wet === 0 && grew(served) > 0 && grew(parched) === 0;
+  },
+);
+
+claim(
+  'A town grows up by what it has built, and the catalogue opens as it does',
+  'ages.ts — progress is something your town achieves, not a currency you spend',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    const locked = world.canPlace('keep', { x: C, y: C });
+    if (locked.ok) return note('a hamlet could build a keep'), false;
+
+    const heart = siteNear(world, C, C, 'farm');
+    if (!heart) return note('no ground'), false;
+    world.place('farm', heart);
+    const well = siteNear(world, heart.x, heart.y, 'well');
+    if (well) world.place('well', well);
+
+    // Housing enough for the forty people a hamlet must show before it is a
+    // village. Nothing is spent and nothing is researched — the town simply
+    // becomes the thing the requirements describe.
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + ring * 0.4;
+        const r = 30 + ring * 24;
+        const p = siteNear(world, heart.x + Math.cos(a) * r, heart.y + Math.sin(a) * r, 'cottage');
+        if (p) world.place('cottage', p);
+      }
+    }
+
+    const before = world.ages.current.id;
+    const outstanding = world.ages.progress(
+      world.buildings,
+      world.populace.report.population,
+      world.needs.coverage,
+    ).outstanding.length;
+
+    run(world, 1400);
+
+    const after = world.ages.current;
+    const opened = world.ages.unlocked();
+    note(
+      `${before} → ${after.id} at ${world.populace.report.population} people ` +
+        `(${outstanding} requirement(s) outstanding at the start); ` +
+        `chapel now buildable: ${opened.has('chapel')}`,
+    );
+    return before === 'hamlet' && after.id !== 'hamlet' && opened.has('chapel');
+  },
+);
+
+claim(
+  'Growing up raises the standard: a village wants a church a hamlet did not',
+  'ages.ts — advancing is not a pure reward, or there is no tension in it',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    const heart = siteNear(world, C, C, 'cottage');
+    if (!heart) return note('no ground'), false;
+    const house = world.place('cottage', heart).building;
+    const well = siteNear(world, heart.x + 20, heart.y, 'well');
+    if (well) world.place('well', well);
+    run(world, 40);
+
+    const asHamlet = world.needs.servedOf(house);
+    const hamletDemands = world.ages.demands.length;
+
+    world.ages.index = 1; // Village.
+    run(world, 40);
+    const asVillage = world.needs.servedOf(house);
+
+    note(
+      `hamlet demands ${hamletDemands} (served ${asHamlet.toFixed(2)}) → ` +
+        `village demands ${world.ages.demands.length} (served ${asVillage.toFixed(2)})`,
+    );
+    return asHamlet === 1 && asVillage < 1 && world.ages.demands.length > hamletDemands;
+  },
+);
+
+claim(
+  "The rival's town is not frozen by the player's needs",
+  'needs are computed for one side, and an unknown house reads as unserved',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // A rustic rival hamlet with no services of any kind. Under the bug this
+    // trial was written for, none of it could ever evolve — the needs map only
+    // knows the player's houses, so every rival house scored zero.
+    const seedAt = siteNear(world, C + 220, C - 200, 'farm');
+    if (!seedAt) return note('no ground'), false;
+    world.place('farm', seedAt, 0, OWNER_RIVAL);
+    const houses = [];
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const p = siteNear(world, seedAt.x + Math.cos(a) * 27, seedAt.y + Math.sin(a) * 27, 'cottage');
+      const r = p && world.place('cottage', p, 0, OWNER_RIVAL);
+      if (r && r.ok) houses.push(r.building);
+    }
+    if (houses.length === 0) return note('could not seed the rival hamlet'), false;
+
+    run(world, 320);
+    const grew = houses.filter((b) => buildingType(b.typeId).isEvolved).length;
+    note(`${grew}/${houses.length} rival cottages evolved with no services on the map`);
+    return grew > 0;
+  },
+);
 
 console.log('');
 if (failures > 0) {

@@ -118,6 +118,12 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   keep: { eaves: 15, rise: 0, form: 'flat', overhang: 1.1 },
   barrack_row: { eaves: 5.6, rise: 2, ridgeAlongWidth: true, overhang: 0.3 },
 
+  // A well is furniture, not architecture: a stone drum, two posts and a tiny
+  // canopy. At default eaves it came out as a 4.5m shed on a 4m footprint, which
+  // read as the smallest cottage in the world rather than as the thing forty
+  // households walk to every morning.
+  well: { wall: 0xa9a291, roof: 0x6b6152, eaves: 1.0, rise: 0.9, overhang: 0.55 },
+
   // Not buildings: ground cover with no roof to speak of.
   green: { form: 'flat', eaves: 0.4, rise: 0, wall: FOLIAGE.wall, roof: FOLIAGE.roof },
   orchard: { form: 'flat', eaves: 1.6, rise: 0, wall: FOLIAGE.wall, roof: FOLIAGE.roof },

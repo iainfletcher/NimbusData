@@ -13,6 +13,8 @@ import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military
 import { Chronicle } from './chronicle';
 import { Labour, LABOUR_INTERVAL } from './labour';
 import { Populace } from './populace';
+import { Needs, NEEDS_INTERVAL, NEED_LABELS } from './needs';
+import { Ages } from './ages';
 import { Quarters, QUARTER_INTERVAL } from './quarters';
 import { CATCHMENT, Economy, roadCost } from './economy';
 import { computeLand, harvestable, type Land } from './land';
@@ -47,6 +49,9 @@ const TERRITORY_INTERVAL = 12;
  */
 const MILITARY_INTERVAL = 4;
 
+/** Why a building is not working. Each has an obvious fix. */
+export type ProblemKind = 'unstaffed' | 'barren' | 'unrest' | 'unserved';
+
 export interface PlacementResult {
   ok: boolean;
   reason?: string;
@@ -80,6 +85,9 @@ export class World {
   readonly quarters = new Quarters();
   readonly labour = new Labour();
   readonly populace = new Populace();
+  readonly needs = new Needs();
+  readonly ages = new Ages();
+  private needsCooldown = 0;
   private labourCooldown = 0;
   private quarterCooldown = 0;
   private wasHungry = false;
@@ -171,7 +179,7 @@ export class World {
     return best >= 0 ? CHARACTERS[best] : null;
   }
 
-  canPlace(typeId: string, pos: Vec2): PlacementResult {
+  canPlace(typeId: string, pos: Vec2, owner: number = OWNER_PLAYER): PlacementResult {
     const type = buildingType(typeId);
 
     const half = Math.max(type.width, type.depth) / 2;
@@ -190,6 +198,14 @@ export class World {
 
     if (type.cost && !this.economy.canAfford(type.cost)) {
       return { ok: false, reason: 'Not enough materials' };
+    }
+
+    // The age is the *player's* town growing up. The rival is a neighbour, not a
+    // second player sharing a tech level — gating it on your progress would mean
+    // your hamlet held its army back, which is nonsense and would also make the
+    // frontier quietly easier the slower you played.
+    if (owner === OWNER_PLAYER && !this.ages.unlocked().has(typeId)) {
+      return { ok: false, reason: `Not yet — ${this.ages.current.name} cannot build this` };
     }
 
     for (const other of this.buildings) {
@@ -215,7 +231,7 @@ export class World {
     rotation = 0,
     owner: number = OWNER_PLAYER,
   ): PlacementResult {
-    const check = this.canPlace(typeId, pos);
+    const check = this.canPlace(typeId, pos, owner);
     if (!check.ok) return check;
 
     const building: Building = {
@@ -447,6 +463,16 @@ export class World {
       this.labour.update(this.buildings, this.populace.occupancy);
     }
 
+    // What every house can reach. Runs before the populace, because service is
+    // one of the two things that decides whether anybody moves in.
+    if (this.needsCooldown > 0) {
+      this.needsCooldown--;
+    } else {
+      this.needsCooldown = NEEDS_INTERVAL;
+      this.needs.update(this.buildings, this.terrain, this.ages.demands);
+      this.checkAge();
+    }
+
     // Who lives here. Runs before the economy so the two agree on the same
     // population within a tick.
     this.populace.update(
@@ -454,6 +480,7 @@ export class World {
       this.economy.stocks.food,
       this.economy.hungry,
       this.calendar.effects,
+      this.needs.coverage,
     );
 
     this.economy.update(
@@ -730,6 +757,37 @@ export class World {
     }
   }
 
+  /**
+   * Has the town grown up?
+   *
+   * Advancing is a genuine event — new buildings, a harder standard for housing,
+   * and a line in the chronicle — so it is announced properly rather than
+   * silently flipping a flag.
+   */
+  private checkAge(): void {
+    const grown = this.ages.advance(
+      this.buildings,
+      this.populace.report.population,
+      this.needs.coverage,
+    );
+    if (!grown) return;
+
+    this.chronicle.record(
+      'place',
+      `${this.name} is a ${grown.name.toLowerCase()} now. ${grown.blurb}`,
+      this.now,
+      Infinity,
+    );
+
+    const wants = grown.demands.map((n) => NEED_LABELS[n].toLowerCase());
+    this.chronicle.record(
+      'place',
+      `Households now expect ${wants.join(', ')}.`,
+      this.now,
+      Infinity,
+    );
+  }
+
   /** Note something the player did that a town would remember. */
   private noteFirst(typeId: string): void {
     if (this.seenTypes.has(typeId)) return;
@@ -748,12 +806,17 @@ export class World {
    * click every building. So the problems are computed and **drawn on the map**,
    * on the building that has them.
    *
-   * Deliberately only three, and all of them actionable: nobody to work here,
-   * nothing here to work, and ground that is not really ours. Each has an
-   * obvious fix, which is the test for whether a warning is worth showing.
+   * Deliberately few, and all of them actionable: nobody to work here, nothing
+   * here to work, ground that is not really ours, and a household that cannot
+   * reach something it needs. Each has an obvious fix — which is the test for
+   * whether a warning is worth showing at all. Anything whose answer would be
+   * "raise a slider" does not belong on this list.
+   *
+   * At most one per building, in that order, because a building with three
+   * problems still only needs you to do one thing next.
    */
-  problems(): { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] {
-    const out: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] = [];
+  problems(): { building: Building; kind: ProblemKind }[] {
+    const out: { building: Building; kind: ProblemKind }[] = [];
 
     for (const b of this.buildings) {
       if (b.owner !== OWNER_PLAYER) continue;
@@ -777,6 +840,11 @@ export class World {
 
       if (type.jobs && this.labour.staffingOf(b) < 0.35) {
         out.push({ building: b, kind: 'unstaffed' });
+        continue;
+      }
+
+      if (type.houses && this.needs.missing.has(b.id)) {
+        out.push({ building: b, kind: 'unserved' });
       }
     }
 
@@ -909,6 +977,16 @@ export class World {
       const ground = this.territory.standingAt(b.pos.x, b.pos.y);
       if (ground.standing === 'held' || ground.standing === 'contested') continue;
       if (ground.owner !== null && ground.owner !== b.owner) continue;
+
+      // A house that cannot reach what it needs does not become anything
+      // better, however clear the quarter around it is. Character says what a
+      // place turns into; service says whether it turns into anything at all.
+      //
+      // The player's houses only. Needs are computed for one side — the rival is
+      // a pressure source rather than a second economy — and an unknown house
+      // reads as unserved, so applying this to everybody would silently freeze
+      // the rival's entire town.
+      if (b.owner === OWNER_PLAYER && this.needs.servedOf(b) < 0.99) continue;
 
       const reading = this.field.read(b.pos.x, b.pos.y);
       if (!reading.dominant || reading.coherence < COHERENCE_THRESHOLD) continue;

@@ -107,6 +107,12 @@ export interface BuildingType {
    * *before* paying for it.
    */
   harvests?: 'timber' | 'stone' | 'arable' | 'ore';
+  /**
+   * Household needs this building answers for anyone within reach
+   * (`needs.ts`). This is what makes a church, a market and a tavern do
+   * something rather than merely look like something.
+   */
+  serves?: ('water' | 'faith' | 'market' | 'ale')[];
 }
 
 export interface Building {

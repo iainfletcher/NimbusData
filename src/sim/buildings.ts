@@ -82,6 +82,7 @@ const TYPES: BuildingType[] = [
     ],
     cost: { timber: 26, stone: 34 },
     jobs: 6,
+    serves: ['market'],
   },
   {
     id: 'warehouse',
@@ -92,6 +93,7 @@ const TYPES: BuildingType[] = [
     emissions: [{ character: 'mercantile', strength: 0.8, radius: 70 }],
     cost: { timber: 28, stone: 12 },
     jobs: 4,
+    serves: ['market'],
   },
   {
     id: 'watermill',
@@ -129,6 +131,16 @@ const TYPES: BuildingType[] = [
 
   // ---- Civic -------------------------------------------------------------
   {
+    id: 'well',
+    name: 'Well',
+    family: 'civic',
+    width: 4,
+    depth: 4,
+    emissions: [{ character: 'rustic', strength: 0.25, radius: 40 }],
+    cost: { stone: 12 },
+    serves: ['water'],
+  },
+  {
     id: 'church',
     name: 'Church',
     family: 'civic',
@@ -136,6 +148,7 @@ const TYPES: BuildingType[] = [
     depth: 26,
     emissions: [{ character: 'devout', strength: 1.7, radius: 130 }],
     cost: { timber: 30, stone: 90 },
+    serves: ['faith'],
   },
   {
     id: 'chapel',
@@ -145,6 +158,7 @@ const TYPES: BuildingType[] = [
     depth: 13,
     emissions: [{ character: 'devout', strength: 0.7, radius: 60 }],
     cost: { timber: 16, stone: 34 },
+    serves: ['faith'],
   },
   {
     id: 'almshouse',
@@ -163,6 +177,7 @@ const TYPES: BuildingType[] = [
     depth: 10,
     emissions: [{ character: 'raucous', strength: 1.4, radius: 95 }],
     cost: { timber: 20, stone: 12 },
+    serves: ['ale'],
   },
   {
     id: 'alehouse',
@@ -172,6 +187,7 @@ const TYPES: BuildingType[] = [
     depth: 8,
     emissions: [{ character: 'raucous', strength: 0.7, radius: 60 }],
     cost: { timber: 12, stone: 7 },
+    serves: ['ale'],
   },
   {
     id: 'guildhall',

@@ -210,6 +210,29 @@ export class Terrain {
     return !Number.isNaN(this.hydro.surface[i]);
   }
 
+  /**
+   * Is there fresh water within reach of here?
+   *
+   * Used by `needs.ts`: a house beside a stream has no use for a well. The sea
+   * does not count — it is the one body of water on the map you cannot drink —
+   * which is checked by level rather than by a flag, since anything sitting at
+   * the sea's own surface is the sea.
+   */
+  freshWaterNear(at: Vec2, radius: number): boolean {
+    const step = CELL_SIZE;
+    for (let dy = -radius; dy <= radius; dy += step) {
+      for (let dx = -radius; dx <= radius; dx += step) {
+        if (dx * dx + dy * dy > radius * radius) continue;
+        const x = at.x + dx;
+        const y = at.y + dy;
+        if (!this.isWater(x, y)) continue;
+        if (this.waterAt(x, y) <= WATER_LEVEL + 0.2) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Upstream catchment draining through here, in cells. */
   flowAt(wx: number, wy: number): number {
     const i = this.cellIndex(wx, wy);

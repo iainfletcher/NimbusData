@@ -234,6 +234,41 @@ camera position, zoom, view mode and the quarter revision. Median went back to
 9.9ms. **Cheap-looking DOM writes over a canvas are not cheap, and a smoothed
 average will not tell you so — the minimum will.**
 
+### The projection bug that made a whole layer invisible
+
+Worth recording next to the performance finding, because it is the same category
+of mistake — something that *looks* obviously correct in the source and is
+obviously wrong the moment you check it against reality.
+
+The alert markers over problem buildings were built as a diamond from four world
+points: `(x, y, top ± 1.6)` for the vertical pair and `(x ± 1.3, y ± 1.3, top)`
+for the horizontal one. In an isometric projection
+
+```
+screen.x = (wx − wy) × k
+```
+
+so a step of `(+1, +1)` in world space moves **purely in depth and not sideways at
+all**. The two "horizontal" points therefore landed on exactly the same screen x
+as the centre, and the marker collapsed to a zero-width vertical sliver. It was
+invisible at every zoom on a map that had eleven of them on it, and it survived a
+whole phase of work — the headless trials cannot see, and every screenshot taken
+in the meantime happened to be of a town whose alerts nobody was looking for.
+
+Two lessons, and the second is the general one:
+
+1. **Interface belongs in projected space.** An alert should be the same shape and
+   the same size whichever way the world is turned; only things that are *in* the
+   world should be laid out in world coordinates. Projecting one centre point and
+   building the marker around it in screen units is both the fix and the right
+   design.
+2. **A view that renders without error is not a view that renders.** The trial
+   harness deliberately cannot import a renderer, which is what makes it fast and
+   honest about the simulation — and it means anything purely visual has to be
+   checked by *looking at a picture of the case it is supposed to cover*, not at a
+   picture of a healthy town. The screenshot that found this was the first one
+   deliberately set up to have problems in it.
+
 ### The lighting change that mattered as much as the grammar
 
 Worth recording separately, because it was cheaper than any algorithm here and
