@@ -455,6 +455,54 @@ adds no maintenance burden, no arithmetic, and no UI, but makes a long game
 accumulate meaning. It's development in exactly the dimension Polytopia lacks,
 without any of the complexity you're allergic to.
 
+#### Built — quarters that name themselves, and a chronicle
+
+Two systems, and neither needed a new simulation. Both read what was already
+there and say it out loud, which is the whole trick.
+
+**Quarters** (`src/sim/quarters.ts`). The character field could always answer
+*what is this cell like*, and every system downstream read it that way — one
+cell at a time, as a number. Nothing ever looked at the field and said *there is
+a place here*. That gap is why a town could be well-built and still feel
+anonymous, because a player does not think in cells:
+
+> **When enough contiguous ground agrees about what it is, it becomes a quarter,
+> and it is given a name it keeps.**
+
+Names are drawn from real English urban toponyms — the Shambles, Bankside,
+Bedern, Cheapside, Minster Yard, Muster Green — and they are **drawn on the map,
+on the place**, not listed in a corner. That is most of the difference between a
+map and a spreadsheet.
+
+Nothing about it is a reward or a score. It is recognition: the town noticing
+what you already built and telling you what you made.
+
+**A quarter keeps its name when its character drifts,** which is the detail that
+makes it feel like a place rather than a label. A district that was the tanneries
+and is now genteel is still called the Shambles. A trial confirms it: *Coppergate,
+named for industrious, now verdant* — and the chronicle notices out loud.
+
+**The chronicle** (`src/sim/chronicle.ts`) is the cheapest possible way to give a
+simulation a history, and history is most of what makes people care about a
+place. Two rules keep it readable: **only things that would be remembered** (a
+hard winter goes in, an ordinary one does not), and **written as a chronicle, not
+as telemetry** — "The Shambles took its name" rather than `quarter_created id=3`.
+They cost the same to produce.
+
+Over 900 ticks an unattended town produced 23 entries, which is about right: a
+page of history rather than a log file.
+
+#### The tuning that mattered
+
+- **34 cells was far too small a quarter.** It shredded one town into
+  *nineteen* of them, several smaller than a farmyard. A name handed to every
+  patch of ground means nothing; the threshold is now roughly a hundred metres
+  across, and a town gets six or seven.
+- **A place needs grace.** Without it a district that dips below the threshold
+  for one recount dies and is re-founded under a new name, and the chronicle
+  fills with places losing and regaining their character every few seasons. Real
+  places do not do that.
+
 ### Pillar F — Speculative dial: the town has its own plans
 
 Citizens occasionally build things you didn't ask for when conditions are right.

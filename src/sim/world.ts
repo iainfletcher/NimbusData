@@ -7,9 +7,11 @@ import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd } from './people';
 import { Conductance, openGround } from './conductance';
 import { Territory } from './territory';
-import { Calendar } from './calendar';
+import { Calendar, type Season } from './calendar';
 import { Rival } from './rival';
 import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military';
+import { Chronicle } from './chronicle';
+import { Quarters, QUARTER_INTERVAL } from './quarters';
 import { Economy, roadCost } from './economy';
 import { computeLand, type Land } from './land';
 import { planRoads, type PlanSpec } from './plans';
@@ -72,6 +74,11 @@ export class World {
   readonly military = new Military();
   readonly economy = new Economy();
   readonly calendar = new Calendar();
+  readonly chronicle = new Chronicle();
+  readonly quarters = new Quarters();
+  private quarterCooldown = 0;
+  private wasHungry = false;
+  private seenTypes = new Set<string>();
   private rival: Rival;
   /** How many buildings the rival has added since the start. */
   rivalBuilt = 0;
@@ -216,6 +223,12 @@ export class World {
     // The rival builds on its own account, so only the player's spending counts.
     const type = buildingType(typeId);
     if (type.cost && owner === OWNER_PLAYER) this.economy.spend(type.cost);
+    if (owner === OWNER_PLAYER) {
+      if (this.buildings.length === 1) {
+        this.chronicle.record('place', `${this.name} was founded.`, this.now, Infinity);
+      }
+      this.noteFirst(typeId);
+    }
     this.fieldDirty = true;
     this.markFabricDirty();
     return { ok: true, building };
@@ -475,9 +488,33 @@ export class World {
       this.terrain,
       (wx, wy) => this.territory.integratedAt(wx, wy),
       (b) => {
-        if (this.remove(b.id)) this.razed++;
+        if (!this.remove(b.id)) return;
+        this.razed++;
+        const what = buildingType(b.typeId).name;
+        this.chronicle.record(
+          'war',
+          b.owner === OWNER_PLAYER
+            ? `A ${what.toLowerCase()} of ours was thrown down.`
+            : `Our column threw down a rival ${what.toLowerCase()}.`,
+          this.now,
+          150,
+        );
       },
       this.buildings,
+      (band, starved) => {
+        if (band.owner === OWNER_PLAYER) {
+          this.chronicle.record(
+            'war',
+            starved
+              ? 'A warband starved in the field. It was too far from anything we had made ours.'
+              : 'A warband was broken.',
+            this.now,
+            200,
+          );
+        } else {
+          this.chronicle.record('war', 'A rival column was broken.', this.now, 200);
+        }
+      },
     );
     for (const [id, left] of this.musterReady) {
       if (left <= 1) this.musterReady.delete(id);
@@ -493,6 +530,32 @@ export class World {
     } else {
       this.militaryCooldown = MILITARY_INTERVAL;
       this.military.update(this.buildings, this.useFlow ? this.conductance : openGround());
+    }
+
+    // Quarters form over years, so they are recounted rarely — and the events
+    // that come back are what the chronicle is mostly made of.
+    if (this.quarterCooldown > 0) {
+      this.quarterCooldown--;
+    } else {
+      this.quarterCooldown = QUARTER_INTERVAL;
+      this.recountQuarters();
+    }
+
+    // Hunger is worth remembering when it *starts*, not every tick it lasts.
+    if (this.economy.hungry !== this.wasHungry) {
+      this.wasHungry = this.economy.hungry;
+      if (this.economy.hungry) {
+        this.chronicle.record(
+          'hardship',
+          this.calendar.season === 'winter'
+            ? 'The stores ran out before the thaw. Building stopped.'
+            : 'The town went hungry. Building stopped until the granaries filled.',
+          this.now,
+          600,
+        );
+      } else {
+        this.chronicle.record('hardship', 'The granaries filled again.', this.now, 600);
+      }
     }
 
     // Culture is slow by design, so it is recomputed on a lazy cadence and the
@@ -563,12 +626,76 @@ export class World {
     }
 
     this.musterReady.set(keep.id, MUSTER_COOLDOWN);
+    if (owner === OWNER_PLAYER) {
+      this.chronicle.record('war', 'A warband mustered at the keep.', this.now, 300);
+    }
     // Raised at the gate rather than inside the walls, so it is visible.
     const type = buildingType(keep.typeId);
     return this.military.muster(owner, {
       x: keep.pos.x + Math.cos(keep.rotation) * (type.width / 2 + 8),
       y: keep.pos.y + Math.sin(keep.rotation) * (type.depth / 2 + 8),
     });
+  }
+
+  /**
+   * Recount the quarters and write down what changed.
+   *
+   * The events are deliberately phrased as things that happened to a town
+   * rather than as state transitions — "The Shambles took its name" instead of
+   * "quarter created". They cost the same to produce and they are the whole
+   * reason anybody would read the chronicle twice.
+   */
+  private recountQuarters(): void {
+    const events = this.quarters.update(
+      this.field,
+      this.buildings,
+      this.calendar.year,
+      this.nameRng,
+      this.name,
+    );
+
+    for (const event of events) {
+      switch (event.kind) {
+        case 'named':
+          if (event.quarter.owner === OWNER_PLAYER) {
+            this.chronicle.record(
+              'place',
+              `${event.quarter.name} took its name — ${event.quarter.buildings} buildings, ` +
+                `unmistakably ${event.quarter.character}.`,
+              this.now,
+              Infinity,
+            );
+          }
+          break;
+
+        case 'changed':
+          // A place keeps its name when its character drifts, which is what
+          // real places do — and noticing it out loud is one of the few ways a
+          // simulation can tell you something you did not already know.
+          if (event.quarter.owner === OWNER_PLAYER) {
+            this.chronicle.record(
+              'place',
+              `${event.quarter.name} is ${event.to} now, whatever its name says.`,
+              this.now,
+              900,
+            );
+          }
+          break;
+
+        case 'lost':
+          this.chronicle.record('place', `${event.name} lost its character.`, this.now, 900);
+          break;
+      }
+    }
+  }
+
+  /** Note something the player did that a town would remember. */
+  private noteFirst(typeId: string): void {
+    if (this.seenTypes.has(typeId)) return;
+    this.seenTypes.add(typeId);
+    const type = buildingType(typeId);
+    if (type.family === 'residential') return;
+    this.chronicle.record('works', `${type.name} built — the first in ${this.name}.`, this.now, Infinity);
   }
 
   /** Send a column somewhere, routed over the current cost field. */
@@ -631,14 +758,31 @@ export class World {
 
       b.drift = (b.drift ?? 0) + gain;
       if (b.drift >= 1) {
+        const from = b.owner;
         b.owner = owner;
         b.drift = 0;
         this.captured++;
         flipped = true;
+
+        const where = this.quarters.at(b.pos.x, b.pos.y);
+        const place = where ? ` in ${where.name}` : '';
+        this.chronicle.record(
+          'place',
+          from === OWNER_PLAYER
+            ? `A ${buildingType(b.typeId).name.toLowerCase()}${place} went over to the rival. Nobody fought for it.`
+            : `A ${buildingType(b.typeId).name.toLowerCase()}${place} came over to us without a shot.`,
+          this.now,
+          220,
+        );
       }
     }
 
     if (flipped) this.fieldDirty = true;
+  }
+
+  /** The dateline every chronicle entry is filed under. */
+  private get now(): { tick: number; year: number; season: Season } {
+    return { tick: this.tickCount, year: this.calendar.year, season: this.calendar.season };
   }
 
   /** Force the character field to be recomputed, e.g. after toggling flow. */

@@ -90,6 +90,12 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
   supply, fight, and throw down enemy fortifications; buildings that change hands
   by cultural drift; and a rival that plays all of it back at you
 
+- **Quarters that name themselves** — when enough contiguous ground agrees what
+  it is, it becomes a place, gets a real English name, and keeps it even when its
+  character drifts. Drawn on the map, on the place
+- **A chronicle** — a running record of what the town would remember: places
+  taking their names, columns broken, hard winters, buildings changing hands
+
 **Not yet built:** planned-fabric amplification (`design/05` §3); broadening
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval
 era.

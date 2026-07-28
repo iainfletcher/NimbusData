@@ -384,6 +384,7 @@ export class Military {
     integratedAt: (wx: number, wy: number) => number | null,
     onRaze: (building: Building) => void,
     buildings: readonly Building[],
+    onLost?: (band: Warband, starved: boolean) => void,
   ): void {
     for (const w of this.warbands) {
       this.march(w, terrain);
@@ -394,7 +395,12 @@ export class Military {
     this.besiege(onRaze, buildings);
 
     for (let i = this.warbands.length - 1; i >= 0; i--) {
-      if (this.warbands[i].strength <= 0.02) this.warbands.splice(i, 1);
+      const band = this.warbands[i];
+      if (band.strength > 0.02) continue;
+      // Why a column died is the interesting part: starved is a supply failure
+      // and therefore the player's planning; broken is a battle they lost.
+      onLost?.(band, !band.supplied);
+      this.warbands.splice(i, 1);
     }
   }
 

@@ -217,6 +217,23 @@ the object the building is named for.
 | A tower's base read as a separate slab | The batter was 2m tall and 1.5m proud on every side. A base course has to be *low and barely wider* or it is a plinth the tower has been stood on. |
 | The mill wheel was invisible | Drawn on a fixed gable, which is the far one half the time. It now picks whichever end faces the camera. |
 
+### A performance finding worth writing down
+
+Quarter names are DOM elements over the canvas rather than text drawn into it,
+which is right — text stays crisp at every zoom and can be styled like a map
+rather than like a HUD. But repositioning seven of them every frame took the
+**median** frame from 9.2ms to 14.1ms.
+
+The giveaway was that the **minimum** frame was unchanged, at ~5ms. A renderer
+that got slower would have moved the floor; only the expensive frames moved, and
+that pattern means occasional work rather than steady work — here, style
+invalidation and layout on a full-screen overlay sitting on top of the canvas.
+
+The fix is to write to the DOM only when something actually moved: a signature of
+camera position, zoom, view mode and the quarter revision. Median went back to
+9.9ms. **Cheap-looking DOM writes over a canvas are not cheap, and a smoothed
+average will not tell you so — the minimum will.**
+
 ### The lighting change that mattered as much as the grammar
 
 Worth recording separately, because it was cheaper than any algorithm here and

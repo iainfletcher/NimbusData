@@ -1,6 +1,7 @@
 import { Application } from 'pixi.js';
 import {
   COHERENCE_THRESHOLD,
+  dateline,
   World,
   WORLD_SIZE,
   buildingType,
@@ -331,6 +332,15 @@ async function main(): Promise<void> {
   }
 
   btnWarband.addEventListener('click', () => setWarband(!warbandTool));
+
+  // The keys panel used to sit where the chronicle now lives, so it folds away.
+  const btnHint = el<HTMLButtonElement>('toggle-hint');
+  const hintPanel = el('hint');
+  btnHint.addEventListener('click', () => {
+    const on = hintPanel.style.display !== 'block';
+    hintPanel.style.display = on ? 'block' : 'none';
+    btnHint.setAttribute('aria-pressed', String(on));
+  });
 
   /** Resolve a click while the warband tool is up. Returns a note for the hint. */
   function warbandClick(at: Vec2): void {
@@ -687,6 +697,113 @@ async function main(): Promise<void> {
     rBuilding.textContent = hit ? buildingType(hit.typeId).name : '—';
   }
 
+  // ---- Quarter names, drawn on the map ------------------------------------
+  //
+  // A place name belongs *on the place*. Putting these in a list in the corner
+  // would tell you the same facts and none of the same story — this is the
+  // difference between a map and a spreadsheet, and it is why they are DOM
+  // rather than canvas: crisp at any zoom, and stylable like a map.
+  const quarterHost = el('quarters');
+  const quarterTags = new Map<number, HTMLElement>();
+  let labelState = '';
+
+  function updateQuarterLabels(): void {
+    // Only touch the DOM when something actually moved.
+    //
+    // Repositioning seven labels every frame sounds free and is not: each write
+    // invalidates style and layout for a full-screen overlay sitting on top of
+    // the canvas, and it took the median frame from 9.2ms to 14.1ms while
+    // leaving the *minimum* untouched — the giveaway that the cost was in
+    // occasional expensive frames rather than in the renderer.
+    const signature =
+      `${camera.x.toFixed(1)},${camera.y.toFixed(1)},${camera.zoom.toFixed(3)},` +
+      `${view.viewMode},${world.quarters.revision},${camera.viewportWidth}`;
+    if (signature === labelState) return;
+    labelState = signature;
+
+    const alive = new Set<number>();
+
+    for (const q of world.quarters.list) {
+      alive.add(q.id);
+
+      let tag = quarterTags.get(q.id);
+      if (!tag) {
+        tag = document.createElement('div');
+        tag.className = 'quarter';
+        quarterHost.appendChild(tag);
+        quarterTags.set(q.id, tag);
+        // A beat before fading in, so a quarter *arrives* rather than blinking
+        // into existence. It is one line and it makes naming feel like an event.
+        requestAnimationFrame(() => tag?.classList.add('on'));
+      }
+
+      const label =
+        `${q.name}<small>${CHARACTER_LABELS[q.character]} · since year ${q.since}</small>`;
+      if (tag.dataset.label !== label) {
+        tag.innerHTML = label;
+        tag.dataset.label = label;
+      }
+      tag.classList.toggle('rival', q.owner !== 0);
+
+      const h = world.terrain.heightAt(q.centre.x, q.centre.y);
+      const p = view.currentProjection.project(q.centre.x, q.centre.y, h);
+      const sx = p.x * camera.zoom + (camera.viewportWidth / 2 - camera.x * camera.zoom);
+      const sy = p.y * camera.zoom + (camera.viewportHeight / 2 - camera.y * camera.zoom);
+
+      // Map labels do not scale with the map, but a small quarter's name is
+      // clutter from a long way out, so it drops away as you zoom back.
+      const worth = q.cells * camera.zoom > 260;
+      // Keep clear of the side panels, which the labels would otherwise slide
+      // under — half a place name disappearing behind a button reads as a bug.
+      const onScreen =
+        sx > 244 &&
+        sy > 8 &&
+        sx < camera.viewportWidth - 272 &&
+        sy < camera.viewportHeight - 24;
+
+      tag.style.display = worth && onScreen ? '' : 'none';
+      tag.style.left = `${Math.round(sx)}px`;
+      tag.style.top = `${Math.round(sy)}px`;
+    }
+
+    for (const [id, tag] of quarterTags) {
+      if (alive.has(id)) continue;
+      tag.remove();
+      quarterTags.delete(id);
+    }
+  }
+
+  // ---- The chronicle -------------------------------------------------------
+  const chronicleList = el('chronicle-list');
+  let chronicleVersion = -1;
+
+  function updateChronicle(): void {
+    if (world.chronicle.version === chronicleVersion) return;
+    const first = chronicleVersion < 0;
+    chronicleVersion = world.chronicle.version;
+
+    chronicleList.replaceChildren();
+    const entries = world.chronicle.latest(40);
+
+    entries.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = `entry ${entry.kind}`;
+      // The newest line is lifted, so a new event is noticed without a popup.
+      if (i === 0 && !first) row.classList.add('fresh');
+
+      const when = document.createElement('div');
+      when.className = 'when';
+      when.textContent = dateline(entry);
+
+      const what = document.createElement('div');
+      what.className = 'what';
+      what.textContent = entry.text;
+
+      row.append(when, what);
+      chronicleList.append(row);
+    });
+  }
+
   // ---- Loop --------------------------------------------------------------
   let sinceTick = 0;
 
@@ -740,6 +857,8 @@ async function main(): Promise<void> {
     renderMs += (performance.now() - t0 - renderMs) * 0.08;
 
     updateReadout();
+    updateQuarterLabels();
+    updateChronicle();
   });
 }
 

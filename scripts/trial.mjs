@@ -458,6 +458,124 @@ claim(
   },
 );
 
+// ---- design/00 Pillar E: the city remembers --------------------------------
+
+claim(
+  'A coherent district becomes a named place, and keeps the name as it grows',
+  'design/00 Pillar E — the city remembers; the name is the whole point',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // A tight cluster of one character: a church and a dozen houses around it.
+    const heart = siteNear(world, C, C, 'church');
+    if (!heart) return note('no ground'), false;
+    world.place('church', heart);
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + ring;
+        const r = 26 + ring * 20;
+        const p = siteNear(world, heart.x + Math.cos(a) * r, heart.y + Math.sin(a) * r, 'cottage');
+        if (p) world.place('cottage', p);
+      }
+    }
+
+    run(world, 200);
+    const named = world.quarters.list.filter((q) => q.owner === OWNER_PLAYER);
+    if (named.length === 0) return note('nothing was named'), false;
+
+    const first = named[0];
+    const nameThen = first.name;
+    const cellsThen = first.cells;
+
+    // Grow it. The name must survive.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 86, heart.y + Math.sin(a) * 86, 'chapel');
+      if (p) world.place('chapel', p);
+    }
+    run(world, 300);
+
+    const still = world.quarters.list.find((q) => q.name === nameThen);
+    note(
+      `${named.length} quarter(s); "${nameThen}" ${cellsThen} cells → ` +
+        (still ? `${still.cells} cells, name kept` : 'name lost'),
+    );
+    return !!still && still.cells >= cellsThen;
+  },
+);
+
+claim(
+  'The chronicle records the founding and does not repeat itself',
+  'design/00 Pillar E — a log that records everything is a log nobody reads',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    const at = siteNear(world, C, C, 'cottage');
+    if (!at) return note('no ground'), false;
+    world.place('cottage', at);
+
+    const founding = world.chronicle.entries.filter((e) => e.text.includes('was founded'));
+
+    // The same sentence twice running must be suppressed.
+    const before = world.chronicle.entries.length;
+    const now = { tick: world.ticks, year: 1, season: 'spring' };
+    world.chronicle.record('works', 'A thing happened.', now);
+    world.chronicle.record('works', 'A thing happened.', now);
+    world.chronicle.record('works', 'A different thing happened.', now);
+    const added = world.chronicle.entries.length - before;
+
+    note(`${founding.length} founding entry, ${added} of 3 duplicate writes kept`);
+    return founding.length === 1 && added === 2;
+  },
+);
+
+claim(
+  'A place keeps its name when its character changes, and says so',
+  'design/00 Pillar E — real places outlive what they were named for',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // Start industrious.
+    const heart = siteNear(world, C, C, 'foundry');
+    if (!heart) return note('no ground'), false;
+    world.place('foundry', heart);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 34, heart.y + Math.sin(a) * 34, 'workshop');
+      if (p) world.place('workshop', p);
+    }
+    run(world, 260);
+
+    const quarter = world.quarters.list.find((q) => q.character === 'industrious');
+    if (!quarter) return note('no industrious quarter formed'), false;
+    const name = quarter.name;
+
+    // Now bury it in something else entirely.
+    for (let ring = 0; ring < 3; ring++) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + ring * 0.4;
+        const r = 22 + ring * 16;
+        const p = siteNear(world, heart.x + Math.cos(a) * r, heart.y + Math.sin(a) * r, 'green');
+        if (p) world.place('green', p);
+      }
+    }
+    run(world, 500);
+
+    const same = world.quarters.list.find((q) => q.name === name);
+    const noted = world.chronicle.entries.some((e) => e.text.startsWith(name) && e.text.includes('now'));
+    note(
+      same
+        ? `"${name}" named for ${same.namedFor}, now ${same.character}${noted ? ', and the chronicle noticed' : ''}`
+        : `"${name}" disappeared`,
+    );
+    // The name must survive; noticing the drift is a bonus that depends on the
+    // field actually flipping, which a green may or may not manage.
+    return !!same;
+  },
+);
+
 // ---- The economy is the player's, not everybody's --------------------------
 
 claim(
