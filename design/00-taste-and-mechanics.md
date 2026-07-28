@@ -208,6 +208,75 @@ has nowhere to go and speeds up when demand appears. Consequences:
 looks it; a thriving one is busy and loud. You should never open a panel to learn a
 building is unhappy.
 
+#### Built — and the honest verdict is that the recommendation above was not enough
+
+The chain shape is implemented — four things in the ground (timber, stone, arable,
+ore), a works on each, and iron out of ore as the only material fortification is
+built from. All of it terminates in something visible. But shipping it exposed
+that the axis was asking the wrong question.
+
+**Depth was never the problem. The problem was that there was only one decision,
+and it was always yes.** A three-node chain where putting up a sawmill makes
+timber appear is not a shallow resource game, it is a shopping list. Three things
+had to be added before it became a game at all, and none of them is depth:
+
+**1. You have to be able to see the land.** Timber, stone and arable were derived
+from the terrain from the beginning and *never drawn*, so siting a works was a
+guess dressed up as a decision. There is now a land overlay, and the interesting
+part was the normalisation: comparing the four raw makes "which resource is
+strongest here" answer *arable* almost everywhere — true, and useless. Each field
+is normalised against its own peak, so the map answers **"how good is this ground,
+for this"**, which is the question siting actually asks.
+
+**2. Somebody has to work there.**
+
+> **A works yields what its land holds × how well it is staffed.**
+
+The land is out there and the people are in the town, and you cannot move either.
+Measured: the same sawmill on the best timber ground on the map yields **0.000/tick
+unmanned and 1.454/tick** with four cottages beside it. Siting stops being "find
+the resource" and becomes "find the resource *and* house the people who will work
+it" — a real trade with no correct answer, which is what this document keeps
+asking for.
+
+**3. Something has to ask you for something.** Population *was* housing capacity:
+put up a cottage and three workers existed. Nothing arrived, nothing left, and the
+game never wanted anything. Now housing is a **ceiling**, people come when there
+is room and food, and they leave when there is not:
+
+```
+  build housing  →  people arrive  →  they fill jobs  →  works produce
+       ↑                                                       ↓
+       └──────────────  which pays for more housing  ←─────────┘
+```
+
+A full town's readout says **"122/122 — no housing"**, which is the game asking
+for something. That one line is the difference between a builder and a sandbox.
+
+#### The deadlock this created, which was a real bug and a better rule
+
+Arrivals were first gated on a positive food *rate*. That is a deadlock: population
+starts at zero, so nothing is staffed, so the farm produces nothing, so there is no
+surplus, so nobody arrives — **a new town could never be founded.** Four trials
+caught it at once.
+
+Gating on the food **stock** instead fixes it and is a better rule: you start with
+food in the barn, people arrive and eat it, and you have to get production going
+before it runs out. A cold start now runs 0 → 9 → 16 → 17/17 over a year and a
+half. That is the opening tension the game did not have.
+
+#### On "buildings express their own state posturally"
+
+Not yet true, and the interim answer is a compromise worth recording. A works with
+nobody in it produces nothing and looks *exactly* like one that is thriving, which
+is the most frustrating thing a builder can do to you — the town stops growing and
+the only way to find out why is to click every building.
+
+Until posture exists, problems are **drawn on the map, on the building that has
+them**: amber for nobody works here, grey for nothing here to work, red for ground
+that is not really ours. Three colours, no legend, and each has an obvious fix —
+which is the test for whether a warning is worth showing at all.
+
 ### Axis 4 — Territory and combat
 
 You want basic combat for territory expansion. The classic failure here is that

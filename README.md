@@ -106,6 +106,11 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
   built from, which is the join between the resource game and the territory game
 - Build buttons that show cost, jobs and affordability, and a **site preview**
   that draws the catchment and the walk-to-work before you pay
+- **The growth loop.** Housing is a ceiling, not a population: people arrive when
+  there is room and food in the barn, and leave when there is not. A full town's
+  readout says *122/122 — no housing*, which is the game asking for something
+- **Problems drawn on the map**, on the building that has them — amber for nobody
+  works here, grey for nothing here to work, red for ground that is not ours
 
 **Not yet built:** planned-fabric amplification (`design/05` §3); broadening
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval

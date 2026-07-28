@@ -350,6 +350,12 @@ async function main(): Promise<void> {
     );
   }
 
+  const btnProblems = el<HTMLButtonElement>('toggle-problems');
+  btnProblems.addEventListener('click', () => {
+    view.showProblems = !view.showProblems;
+    btnProblems.setAttribute('aria-pressed', String(view.showProblems));
+  });
+
   const btnBorders = el<HTMLButtonElement>('toggle-borders');
   btnBorders.addEventListener('click', () => {
     view.showBorders = !view.showBorders;
@@ -492,6 +498,10 @@ async function main(): Promise<void> {
     world.economy.stocks.stone += 1400;
     seedTestTown(world);
     seedRivalTown(world);
+    // A scenario town arrives with people already in it. Without this the whole
+    // place starts empty, every works reads as unstaffed, and the alerts layer
+    // lights up like a Christmas tree over a town that is fine.
+    world.populace.settle(90);
     world.rebuildFabric();
     view.markBuildingsDirty();
   });
@@ -658,7 +668,9 @@ async function main(): Promise<void> {
   const sIron = el('s-iron');
   const sFood = el('s-food');
   const sJobs = el('s-jobs');
-  const sWorkers = el('s-workers');
+  const sPop = el('s-pop');
+  const sCap = el('s-cap');
+  const sWhy = el('s-why');
   const rWhen = el('r-when');
   const rRival = el('r-rival');
   const rHeld = el('r-held');
@@ -681,11 +693,24 @@ async function main(): Promise<void> {
     sIron.textContent = String(Math.floor(stocks.iron));
     sFood.textContent = String(Math.floor(stocks.food));
 
-    // The workforce line, and the one number that matters: unfilled jobs mean
-    // works standing idle, which is the commonest reason a town stops growing.
+    // Population, and — when it has stopped — *why*. A town that stalls with no
+    // explanation is the worst thing a builder can do, so the reason is on the
+    // same line as the number.
+    const pop = world.populace.report;
+    sPop.textContent = String(pop.population);
+    sCap.textContent = String(pop.capacity);
+    sWhy.textContent =
+      pop.blocked === 'room'
+        ? 'no housing'
+        : pop.blocked === 'food'
+          ? 'no surplus'
+          : pop.blocked === 'leaving'
+            ? 'leaving'
+            : '';
+    sPop.parentElement!.parentElement!.classList.toggle('short', pop.blocked !== null);
+
     const work = world.labour.report;
     sJobs.textContent = `${work.filled}/${work.jobs}`;
-    sWorkers.textContent = String(work.workers);
     sJobs.parentElement!.parentElement!.classList.toggle(
       'short',
       work.jobs > work.filled,

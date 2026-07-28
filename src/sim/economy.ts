@@ -52,8 +52,16 @@ const STONE_RATE = 0.0026;
 const FOOD_RATE = 0.0062;
 const IRON_RATE = 0.0034;
 
-/** A household eats this much per tick. */
-const FOOD_PER_HOUSEHOLD = 0.042;
+/**
+ * One person eats this much per tick.
+ *
+ * Tuned so a full town's winter is genuinely lean rather than a formality: at
+ * this rate a hundred and twenty people eat more over a winter than the frozen
+ * fields produce, so the year only works if autumn's surplus was stored. The
+ * first value was low enough that food piled up to thousands and stopped being
+ * a constraint at all, which quietly removed the only thing gating growth.
+ */
+const FOOD_PER_HEAD = 0.024;
 
 /**
  * What a producer yields on ground that is merely *held* — inside your military
@@ -93,6 +101,7 @@ export class Economy {
     warbands = 0,
     territory: Standings | null = null,
     workforce: Labour | null = null,
+    population: number | null = null,
   ): void {
     let timber = 0;
     let stone = 0;
@@ -146,7 +155,11 @@ export class Economy {
     stone *= season.labour;
     iron *= season.labour;
     food *= season.harvest;
-    const eaten = households * FOOD_PER_HOUSEHOLD * season.appetite;
+    // **People eat, not buildings.** Counting houses meant an empty town ate as
+    // much as a full one, which quietly broke the whole growth loop: building
+    // housing cost you food whether or not anybody moved in.
+    const mouths = population ?? households;
+    const eaten = mouths * FOOD_PER_HEAD * season.appetite;
 
     this.staffed = workforce
       ? workforce.report.jobs > 0

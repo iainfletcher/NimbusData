@@ -12,9 +12,10 @@ import { Rival } from './rival';
 import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military';
 import { Chronicle } from './chronicle';
 import { Labour, LABOUR_INTERVAL } from './labour';
+import { Populace } from './populace';
 import { Quarters, QUARTER_INTERVAL } from './quarters';
-import { Economy, roadCost } from './economy';
-import { computeLand, type Land } from './land';
+import { CATCHMENT, Economy, roadCost } from './economy';
+import { computeLand, harvestable, type Land } from './land';
 import { planRoads, type PlanSpec } from './plans';
 import { makeNameRng, streetName, townName } from './names';
 import { CHARACTER_COUNT, CHARACTERS, characterIndex, type Character } from './types';
@@ -78,9 +79,11 @@ export class World {
   readonly chronicle = new Chronicle();
   readonly quarters = new Quarters();
   readonly labour = new Labour();
+  readonly populace = new Populace();
   private labourCooldown = 0;
   private quarterCooldown = 0;
   private wasHungry = false;
+  private peakRecorded = 0;
   private seenTypes = new Set<string>();
   private rival: Rival;
   /** How many buildings the rival has added since the start. */
@@ -441,8 +444,17 @@ export class World {
       this.labourCooldown--;
     } else {
       this.labourCooldown = LABOUR_INTERVAL;
-      this.labour.update(this.buildings);
+      this.labour.update(this.buildings, this.populace.occupancy);
     }
+
+    // Who lives here. Runs before the economy so the two agree on the same
+    // population within a tick.
+    this.populace.update(
+      this.buildings,
+      this.economy.stocks.food,
+      this.economy.hungry,
+      this.calendar.effects,
+    );
 
     this.economy.update(
       this.buildings,
@@ -452,6 +464,7 @@ export class World {
       this.military.bandsOf(OWNER_PLAYER).length,
       this.territory,
       this.labour,
+      this.populace.report.population,
     );
 
     // The rival only proposes; the world decides whether the ground allows it.
@@ -553,6 +566,20 @@ export class World {
     } else {
       this.quarterCooldown = QUARTER_INTERVAL;
       this.recountQuarters();
+    }
+
+    // Growth is the story of a town, so its milestones go in the chronicle —
+    // but only the round hundreds, or it would be a tick-by-tick census.
+    const people = this.populace.report.population;
+    const milestone = Math.floor(people / 100) * 100;
+    if (milestone >= 100 && milestone > this.peakRecorded) {
+      this.peakRecorded = milestone;
+      this.chronicle.record(
+        'place',
+        `${milestone} people now live in ${this.name}.`,
+        this.now,
+        Infinity,
+      );
     }
 
     // Hunger is worth remembering when it *starts*, not every tick it lasts.
@@ -710,6 +737,50 @@ export class World {
     const type = buildingType(typeId);
     if (type.family === 'residential') return;
     this.chronicle.record('works', `${type.name} built — the first in ${this.name}.`, this.now, Infinity);
+  }
+
+  /**
+   * What is wrong, and where.
+   *
+   * A works with nobody in it produces nothing and looks exactly like one that
+   * is thriving, which is the single most frustrating thing a builder can do to
+   * you — the town stops growing and there is no way to find out why except to
+   * click every building. So the problems are computed and **drawn on the map**,
+   * on the building that has them.
+   *
+   * Deliberately only three, and all of them actionable: nobody to work here,
+   * nothing here to work, and ground that is not really ours. Each has an
+   * obvious fix, which is the test for whether a warning is worth showing.
+   */
+  problems(): { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] {
+    const out: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] = [];
+
+    for (const b of this.buildings) {
+      if (b.owner !== OWNER_PLAYER) continue;
+      const type = buildingType(b.typeId);
+
+      if (this.territory.standingAt(b.pos.x, b.pos.y).standing === 'held') {
+        out.push({ building: b, kind: 'unrest' });
+        continue;
+      }
+
+      // Barren before unstaffed: a mill on bare ground is a siting mistake, and
+      // telling the player to hire people for it would be advice that does not
+      // help.
+      if (type.harvests) {
+        const yieldHere = harvestable(this.land[type.harvests], b.pos, CATCHMENT);
+        if (yieldHere < 6) {
+          out.push({ building: b, kind: 'barren' });
+          continue;
+        }
+      }
+
+      if (type.jobs && this.labour.staffingOf(b) < 0.35) {
+        out.push({ building: b, kind: 'unstaffed' });
+      }
+    }
+
+    return out;
   }
 
   /** Send a column somewhere, routed over the current cost field. */

@@ -262,6 +262,7 @@
       }
       #workforce b { color: var(--text); font-weight: 600; }
       #workforce.short b { color: #e0b06a; }
+      #workforce i { font-style: normal; color: #e0b06a; font-size: 11px; }
 
       #stocks {
         display: flex;
@@ -372,6 +373,7 @@
         <button id="tool-pave">Pave a path</button>
         <button id="toggle-flow" aria-pressed="true">Flow</button>
         <button id="toggle-borders" aria-pressed="false">Borders</button>
+        <button id="toggle-problems" aria-pressed="true">Alerts</button>
       </div>
       <div class="row">
         <button id="tool-warband">Warbands</button>
@@ -388,8 +390,12 @@
         <span><b id="s-food">0</b> food</span>
       </div>
       <div id="workforce">
-        <span class="k">Workforce</span>
-        <span><b id="s-jobs">0</b> jobs · <b id="s-workers">0</b> people</span>
+        <span class="k">People</span>
+        <span><b id="s-pop">0</b>/<b id="s-cap">0</b> <i id="s-why"></i></span>
+      </div>
+      <div id="workforce">
+        <span class="k">Jobs</span>
+        <span><b id="s-jobs">0</b> filled</span>
       </div>
       <div id="readout">
         <div class="line"><span class="k">Under cursor</span><span id="r-dominant">—</span></div>

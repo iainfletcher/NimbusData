@@ -99,6 +99,9 @@ export class WorldView {
   private lastSeason: Season | null = null;
 
   showOverlay = false;
+  showProblems = true;
+  private problemCache: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' }[] = [];
+  private problemTick = -1;
   /**
    * Which overlay the diagnostic layer is showing.
    *
@@ -317,6 +320,14 @@ export class WorldView {
     if (this.showBorders && borderTick !== this.borderVersion) {
       this.borderVersion = borderTick;
       this.drawBorders();
+    }
+
+    // Problems are recomputed on a slow cadence — they change on the labour
+    // clock, not per frame.
+    const problemTick = this.world.ticks >> 4;
+    if (this.showProblems && problemTick !== this.problemTick) {
+      this.problemTick = problemTick;
+      this.problemCache = this.world.problems();
     }
 
     this.drawPeople();
@@ -951,6 +962,17 @@ export class WorldView {
       this.drawWarband(this.peopleBands[band], w, plan);
     }
 
+    // Problem markers ride with the people: they move with the camera, they have
+    // to sort against buildings, and they are cleared and redrawn on the same
+    // cadence.
+    if (this.showProblems) {
+      for (const problem of this.problemCache) {
+        const band = depthBand(problem.building.pos.x + problem.building.pos.y);
+        this.dirtyPeopleBands.add(band);
+        this.drawProblem(this.peopleBands[band], problem, plan);
+      }
+    }
+
     const people = this.world.crowd.people;
     if (people.length === 0) return;
 
@@ -1484,6 +1506,44 @@ export class WorldView {
       if (worldHeight > 5) quad(0, 0.45, 1, 0.51, timber);
       quad(0, 0, 1, 0.05, timber);
     }
+  }
+
+  /**
+   * A marker floating over a building that is not working, and why.
+   *
+   * Colour carries the reason, so three states are distinguishable without a
+   * legend: **amber** nobody works here, **grey** nothing here to work, **red**
+   * this ground is not really ours. It bobs, because a static icon over a static
+   * town disappears into the roofline within about ten seconds.
+   */
+  private drawProblem(
+    g: Graphics,
+    problem: { building: Building; kind: 'unstaffed' | 'barren' | 'unrest' },
+    plan: boolean,
+  ): void {
+    const b = problem.building;
+    const colour = PROBLEM_COLOURS[problem.kind];
+    const ground = this.world.terrain.heightAt(b.pos.x, b.pos.y);
+    const look = appearanceOf(b.typeId);
+    const bob = Math.sin(this.elapsed * 2.2 + b.id) * 0.5;
+    const top = ground + look.eaves + look.rise + 4.5 + bob;
+
+    if (plan) {
+      const p = this.project(b.pos.x, b.pos.y, ground);
+      g.circle(p.x, p.y, 2.2).fill({ color: colour, alpha: 0.9 });
+      return;
+    }
+
+    const tip = this.project(b.pos.x, b.pos.y, top - 1.6);
+    const head = this.project(b.pos.x, b.pos.y, top + 1.6);
+    const left = this.project(b.pos.x - 1.3, b.pos.y - 1.3, top);
+    const right = this.project(b.pos.x + 1.3, b.pos.y + 1.3, top);
+
+    g.poly([
+      head.x, head.y, right.x, right.y, tip.x, tip.y, left.x, left.y,
+    ])
+      .fill({ color: colour, alpha: 0.95 })
+      .stroke({ color: 0x22201c, width: 0.22, alpha: 0.8 });
   }
 
   /** A stack at the gable end. Most of what says "somebody lives here". */
@@ -2151,6 +2211,16 @@ function edgeColour(a: number | null, b: number | null): number {
 
 const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
+/**
+ * Why a building is not working. Amber for people, grey for land, red for
+ * ground that is not ours — three colours, no legend needed.
+ */
+const PROBLEM_COLOURS = {
+  unstaffed: 0xe8a33d,
+  barren: 0x9aa0a6,
+  unrest: 0xd0503f,
+};
+
 /** Wet oak and iron banding, for a mill wheel. */
 const WHEEL_TIMBER = 0x6b5741;
 const WHEEL_DARK = 0x3e3327;

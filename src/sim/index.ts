@@ -21,6 +21,7 @@ export * from './calendar';
 export * from './military';
 export * from './chronicle';
 export * from './labour';
+export * from './populace';
 export * from './quarters';
 export * from './rival';
 export * from './world';

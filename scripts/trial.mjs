@@ -700,6 +700,106 @@ claim(
   },
 );
 
+// ---- populace.ts: the growth loop ------------------------------------------
+
+claim(
+  'People arrive to fill housing, and stop when there is none left',
+  'populace.ts — housing is a ceiling, not a population',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // A farm and enough cottages for a couple of dozen people.
+    const heart = siteNear(world, C, C, 'farm');
+    if (!heart) return note('no ground'), false;
+    world.place('farm', heart);
+    let beds = 0;
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + ring;
+        const r = 30 + ring * 22;
+        const p = siteNear(world, heart.x + Math.cos(a) * r, heart.y + Math.sin(a) * r, 'cottage');
+        if (p && world.place('cottage', p).ok) beds += 3;
+      }
+    }
+
+    const start = world.populace.report.population;
+    run(world, 900);
+    const end = world.populace.report;
+
+    note(`${start} → ${end.population} of ${end.capacity} beds; blocked by ${end.blocked ?? 'nothing'}`);
+    return start === 0 && end.population > 0 && end.population === end.capacity && end.blocked === 'room';
+  },
+);
+
+claim(
+  'A town with no food surplus does not grow',
+  'populace.ts — arrivals are gated on food, which is legible and on the map',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    world.economy.stocks.food = 0;
+
+    // Housing but no farm: beds going spare and nothing to eat.
+    const heart = siteNear(world, C, C, 'cottage');
+    if (!heart) return note('no ground'), false;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 30, heart.y + Math.sin(a) * 30, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+
+    run(world, 400);
+    const r = world.populace.report;
+    note(`${r.population} of ${r.capacity} beds filled; blocked by ${r.blocked ?? 'nothing'}`);
+    return r.population === 0 && r.capacity > 0;
+  },
+);
+
+claim(
+  'Empty housing costs no food',
+  'a bug the growth loop would have hidden: buildings do not eat, people do',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    world.economy.stocks.food = 500;
+
+    const heart = siteNear(world, C, C, 'cottage');
+    if (!heart) return note('no ground'), false;
+    for (let i = 0; i < 10; i++) {
+      const p = siteNear(world, heart.x + i * 14, heart.y, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+
+    // One tick, before anybody has had a chance to move in.
+    world.tick();
+    const eaten = -world.economy.rates.food;
+    note(`${world.populace.report.capacity} empty beds cost ${eaten.toFixed(3)} food/tick`);
+    return Math.abs(eaten) < 0.001;
+  },
+);
+
+claim(
+  'A works nobody can reach is reported as a problem, on the building',
+  'world.problems() — a dead works must be findable without clicking every building',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // A sawmill far from anything, and a healthy hamlet elsewhere.
+    const lonely = siteNear(world, C - 300, C + 260, 'sawmill');
+    if (!lonely || !world.place('sawmill', lonely).ok) return note('no ground'), false;
+
+    run(world, 40);
+    const problems = world.problems();
+    const kinds = problems.map((p) => p.kind);
+    const onTheMill = problems.find((p) => p.building.typeId === 'sawmill');
+
+    note(`${problems.length} problem(s): ${kinds.join(', ') || 'none'}`);
+    return !!onTheMill;
+  },
+);
+
 // ---- The economy is the player's, not everybody's --------------------------
 
 claim(

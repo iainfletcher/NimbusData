@@ -63,7 +63,7 @@ export class Labour {
    * closest to housing gets staffed first, and the one out in the woods is the
    * one standing idle.
    */
-  update(buildings: readonly Building[], owner = OWNER_PLAYER): void {
+  update(buildings: readonly Building[], occupancy = 1, owner = OWNER_PLAYER): void {
     this.staffing.clear();
     this.commutes.length = 0;
 
@@ -73,7 +73,8 @@ export class Labour {
     for (const b of buildings) {
       if (b.owner !== owner) continue;
       const type = buildingType(b.typeId);
-      if (type.houses) homes.push({ b, free: type.houses });
+      // Beds are a ceiling; the people actually living in them are what work.
+      if (type.houses) homes.push({ b, free: type.houses * occupancy });
       if (type.jobs) works.push({ b, open: type.jobs });
     }
 
@@ -122,8 +123,8 @@ export class Labour {
     }
 
     this.report.jobs = jobs;
-    this.report.workers = workers;
-    this.report.filled = filled;
+    this.report.workers = Math.round(workers);
+    this.report.filled = Math.round(filled);
     this.report.idle = Math.max(0, workers - filled);
   }
 
