@@ -1041,6 +1041,80 @@ export class WorldView {
   }
 
   /**
+   * An overshot waterwheel on the gable end of a mill.
+   *
+   * The mill was a barn beside a stream, and no amount of massing was going to
+   * fix that, because a watermill is not a *shape* — it is a shed with a wheel
+   * on it. The wheel is the whole identification, so it is drawn as real
+   * geometry: a rim, a hub, eight spokes and the paddles between them, standing
+   * upright against the end wall.
+   */
+  private drawWheel(
+    g: Graphics,
+    b: Building,
+    block: Block,
+    foot: number,
+    alpha: number,
+  ): void {
+    const along = block.ridgeAlongWidth;
+    const out = (along ? block.width : block.depth) / 2 + 1.1;
+    const radius = Math.min(block.height * 0.68, (along ? block.depth : block.width) * 0.46);
+    const hubH = foot + radius + 0.6;
+
+    // On whichever gable faces the camera. A wheel on the far end is a wheel
+    // behind a wall, which is worth exactly nothing — and is what the first
+    // version drew, because it always picked the same end regardless of which
+    // way the building had been turned to face its street.
+    const endA = along
+      ? this.local(b, block.u - out, block.v)
+      : this.local(b, block.u, block.v - out);
+    const endB = along
+      ? this.local(b, block.u + out, block.v)
+      : this.local(b, block.u, block.v + out);
+    const centre = endA.x + endA.y > endB.x + endB.y ? endA : endB;
+
+    // The wheel's plane is vertical and runs along the building's short axis.
+    const axis = along
+      ? { x: -Math.sin(b.rotation), y: Math.cos(b.rotation) }
+      : { x: Math.cos(b.rotation), y: Math.sin(b.rotation) };
+
+    const at = (angle: number, r: number): Point =>
+      this.project(
+        centre.x + axis.x * Math.cos(angle) * r,
+        centre.y + axis.y * Math.cos(angle) * r,
+        hubH + Math.sin(angle) * r,
+      );
+
+    const rim: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      const p = at((i / 24) * Math.PI * 2, radius);
+      rim.push(p.x, p.y);
+    }
+    g.poly(rim).fill({ color: WHEEL_DARK, alpha });
+
+    const inner: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      const p = at((i / 24) * Math.PI * 2, radius * 0.78);
+      inner.push(p.x, p.y);
+    }
+    g.poly(inner).fill({ color: WHEEL_TIMBER, alpha });
+
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const hub = at(a, radius * 0.1);
+      const tip = at(a, radius * 0.92);
+      g.moveTo(hub.x, hub.y).lineTo(tip.x, tip.y).stroke({
+        color: WHEEL_DARK,
+        width: 0.24,
+        alpha,
+      });
+    }
+
+    const hub = at(0, 0);
+    g.circle(hub.x, hub.y, radius * 0.13).fill({ color: WHEEL_DARK, alpha });
+  }
+
+  /**
    * A horizontal band across one wall, between two heights given as fractions
    * of the wall. Used for eaves and contact occlusion.
    */
@@ -1102,10 +1176,10 @@ export class WorldView {
     flat: boolean,
   ): void {
     const corners = this.blockCorners(b, block);
-    const foot = ground + block.base;
-    const eaves = foot + block.height;
+    const foot0 = ground + block.base;
+    const eaves = foot0 + block.height;
 
-    const base = corners.map((c) => this.project(c.x, c.y, foot));
+    const base = corners.map((c) => this.project(c.x, c.y, foot0));
     const top = corners.map((c) => this.project(c.x, c.y, eaves));
 
     const walls = [0, 1, 2, 3]
@@ -1114,6 +1188,28 @@ export class WorldView {
         return { i, j, depth: (corners[i].x + corners[i].y + corners[j].x + corners[j].y) / 2 };
       })
       .sort((a, c) => a.depth - c.depth);
+
+    // A roof on posts. Skipping the walls is what makes a market hall read as
+    // somewhere you walk *through* rather than a barn with the doors shut.
+    if (block.open) {
+      const postColour = flat ? wall : lit(shade(wall, -0.3), -0.2, 0.05);
+      for (let c = 0; c < 4; c++) {
+        const inset = 0.35;
+        const cx = corners[c].x + (corners[(c + 2) % 4].x - corners[c].x) * (inset / block.width);
+        const cy = corners[c].y + (corners[(c + 2) % 4].y - corners[c].y) * (inset / block.depth);
+        const half = Math.max(0.22, Math.min(block.width, block.depth) * 0.045);
+        const foot = this.project(cx, cy, foot0);
+        const head = this.project(cx, cy, eaves);
+        g.poly([
+          foot.x - half, foot.y,
+          foot.x + half, foot.y,
+          head.x + half, head.y,
+          head.x - half, head.y,
+        ]).fill({ color: postColour, alpha });
+      }
+      this.drawBlockRoof(g, b, block, eaves, alpha, wall, roof, flat);
+      return;
+    }
 
     for (let wi = 0; wi < walls.length; wi++) {
       const w = walls[wi];
@@ -1163,14 +1259,34 @@ export class WorldView {
       }
 
       // Masonry courses, drawn as geometry rather than implied by a flat fill.
-      if (!flat && block.stack) this.drawCourses(g, [base[w.i], base[w.j], top[w.j], top[w.i]], block.height, face);
+      //
+      // Towers need these more than anything else does. A tall plain shaft has
+      // no windows, no eaves and no roof pitch to give it scale, so without
+      // courses it could be four metres tall or forty — which is why the first
+      // watchtower read as a factory chimney.
+      if (!flat && (block.stack || block.crown === 'battlement')) {
+        this.drawCourses(g, [base[w.i], base[w.j], top[w.j], top[w.i]], block.height, face);
+      }
+    }
+
+    if (block.feature === 'wheel' && !flat) {
+      this.drawWheel(g, b, block, foot0, alpha);
     }
 
     if (block.form === 'flat') {
-      const deck = lit(block.stack ? wall : roof, lambertOf(0, 0, 1), 0.04);
+      // A flat roof is a **deck you stand on** — lead, flags, a wall-walk — and
+      // it faces the sky, so it should be among the brightest surfaces in the
+      // scene. Drawing it in the building's dark slate roof colour made a keep's
+      // top read as a hole cut out of the tower, which is exactly what it looked
+      // like. Ground cover (greens, orchards) is the one exception: that really
+      // is foliage all the way up.
+      const deckBase = block.height < 2 ? roof : shade(wall, -0.14);
+      const deck = flat ? deckBase : lit(deckBase, FLAT_LAMBERT, 0.16);
       g.poly([
         top[0].x, top[0].y, top[1].x, top[1].y, top[2].x, top[2].y, top[3].x, top[3].y,
-      ]).fill({ color: deck, alpha });
+      ])
+        .fill({ color: deck, alpha })
+        .stroke(edge(deck, alpha));
       if (block.crown) this.drawCrown(g, b, block, eaves, alpha, wall);
       return;
     }
@@ -1655,8 +1771,40 @@ export class WorldView {
       .sort((a, c) => a.depth - c.depth);
 
     if (block.crown === 'battlement') {
-      const merlonH = Math.max(1.1, block.width * 0.22);
-      const segments = 5;
+      // **A merlon is chest-high on a person, whatever it is standing on.**
+      // Scaling it with the tower's width gave a twenty-metre keep merlons four
+      // metres tall and four metres wide — a crown of standing stones rather
+      // than a parapet. Both the height and the *spacing* have to be absolute,
+      // so a big keep gets many small merlons and a slim turret gets a few.
+      const merlonH = Math.min(1.7, Math.max(1.05, block.width * 0.16));
+      const pitch = 2.4;
+      // Odd, so the run starts and finishes on a merlon rather than a gap.
+      const segments = Math.max(3, Math.min(15, Math.round(block.width / pitch) * 2 + 1));
+
+      // A corbel table: the parapet oversails the wall on brackets, so there is
+      // a shadowed lip right round the tower just under the battlements. It is
+      // one band of geometry and it is most of what separates "castle" from
+      // "grey box with notches on top".
+      const out = Math.max(0.28, block.width * 0.055);
+      const corbel = this.blockCorners(b, block, out).map((c) =>
+        this.project(c.x, c.y, topH),
+      );
+      const corbelFoot = this.blockCorners(b, block, 0).map((c) =>
+        this.project(c.x, c.y, topH - Math.max(0.7, block.width * 0.11)),
+      );
+
+      for (const f of faces) {
+        const a = corners[f.i];
+        const c = corners[f.j];
+        const ax = c.x - a.x;
+        const ay = c.y - a.y;
+        g.poly([
+          corbel[f.i].x, corbel[f.i].y,
+          corbel[f.j].x, corbel[f.j].y,
+          corbelFoot[f.j].x, corbelFoot[f.j].y,
+          corbelFoot[f.i].x, corbelFoot[f.i].y,
+        ]).fill({ color: lit(shade(wall, -0.12), lambertOf(ay, -ax, 0), 0.02), alpha });
+      }
 
       for (const f of faces) {
         const a = corners[f.i];
@@ -1665,16 +1813,24 @@ export class WorldView {
         const ay = c.y - a.y;
         const colour = lit(wall, lambertOf(ay, -ax, 0), 0.06);
 
+        const wide = this.blockCorners(b, block, out);
+        const wa = wide[f.i];
+        const wc = wide[f.j];
+        const wax = wc.x - wa.x;
+        const way = wc.y - wa.y;
+
         for (let s = 0; s < segments; s += 2) {
           const t0 = s / segments;
           const t1 = (s + 1) / segments;
-          const q0 = { x: a.x + ax * t0, y: a.y + ay * t0 };
-          const q1 = { x: a.x + ax * t1, y: a.y + ay * t1 };
+          const q0 = { x: wa.x + wax * t0, y: wa.y + way * t0 };
+          const q1 = { x: wa.x + wax * t1, y: wa.y + way * t1 };
           const b0 = this.project(q0.x, q0.y, topH);
           const b1 = this.project(q1.x, q1.y, topH);
           const u0 = this.project(q0.x, q0.y, topH + merlonH);
           const u1 = this.project(q1.x, q1.y, topH + merlonH);
-          g.poly([u0.x, u0.y, u1.x, u1.y, b1.x, b1.y, b0.x, b0.y]).fill({ color: colour, alpha });
+          g.poly([u0.x, u0.y, u1.x, u1.y, b1.x, b1.y, b0.x, b0.y])
+            .fill({ color: colour, alpha })
+            .stroke(edge(colour, alpha));
         }
       }
       return;
@@ -1853,6 +2009,10 @@ function edgeColour(a: number | null, b: number | null): number {
 
 const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
+/** Wet oak and iron banding, for a mill wheel. */
+const WHEEL_TIMBER = 0x6b5741;
+const WHEEL_DARK = 0x3e3327;
+
 /** Soldiers are drab and identical; the banner is what carries the colour. */
 const SOLDIER = 0x4c4a44;
 const HELMET = 0x9aa0a6;

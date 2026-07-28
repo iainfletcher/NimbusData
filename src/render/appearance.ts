@@ -91,7 +91,7 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   church: { eaves: 9, rise: 7, form: 'gable', tower: { height: 20, width: 5.5 }, overhang: 0.4 },
   chapel: { eaves: 6, rise: 4.5, overhang: 0.4 },
   guildhall: { eaves: 8, rise: 4, form: 'hip', framed: true, overhang: 0.9 },
-  market: { eaves: 4, rise: 2.5, form: 'hip', overhang: 1.4 },
+  market: { eaves: 4.4, rise: 3.2, form: 'hip', overhang: 2.1 },
 
   // Industry: big sheds, shallow roofs, tall stacks read as chimneys.
   foundry: { eaves: 9, rise: 2.5, form: 'gable', tower: { height: 19, width: 2.6 }, overhang: 0.3 },
@@ -99,6 +99,8 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   sawmill: { eaves: 6, rise: 2.5, framed: true, overhang: 0.8 },
   workshop: { eaves: 5, rise: 2.5, framed: true, overhang: 0.7 },
   warehouse: { eaves: 8, rise: 2, overhang: 0.4 },
+  // Raw stone, not soot brick: a quarry is the material, not a works.
+  quarry: { wall: 0xb3ab97, roof: 0x6a6357, form: 'flat', eaves: 4, rise: 0, overhang: 0 },
   watermill: { eaves: 7, rise: 3.5, framed: true, overhang: 0.7 },
   farm: { eaves: 5.5, rise: 4, framed: true, overhang: 0.8 },
 
@@ -109,20 +111,11 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   // be, because a church spire starts at the ground and passes the roof on its
   // way up. Setting these two to a crown height instead put the battlements at
   // ankle level on a seventeen-metre keep, which is exactly what it looked like.
-  watchtower: {
-    eaves: 13,
-    rise: 0,
-    form: 'flat',
-    tower: { height: 17.5, width: 5.4, crown: 'battlement' },
-    overhang: 0.85,
-  },
-  keep: {
-    eaves: 16,
-    rise: 0,
-    form: 'flat',
-    tower: { height: 21.5, width: 6.8, crown: 'battlement' },
-    overhang: 1.1,
-  },
+  // No `tower` entry on either: the mass grammar composes fortifications
+  // explicitly, because the building *is* the tower and a turret bolted to a
+  // shaft of nearly the same width reads as two chimneys.
+  watchtower: { eaves: 15, rise: 0, form: 'flat', overhang: 0.9 },
+  keep: { eaves: 15, rise: 0, form: 'flat', overhang: 1.1 },
   barrack_row: { eaves: 5.6, rise: 2, ridgeAlongWidth: true, overhang: 0.3 },
 
   // Not buildings: ground cover with no roof to speak of.

@@ -65,6 +65,23 @@ export interface Block {
    * axis. A lean-to slopes *away* from whatever it is leaning against.
    */
   leanFrom?: 1 | -1;
+  /**
+   * A piece of working machinery drawn on the block, after its walls.
+   *
+   * Some buildings are named after a *thing*, and without the thing they are
+   * just a shed: a watermill with no wheel is a barn beside a stream. One piece
+   * of recognisable machinery does more for legibility than any amount of
+   * massing, because it is the object the building is named for.
+   */
+  feature?: 'wheel';
+  /**
+   * No walls: a roof carried on corner posts.
+   *
+   * This is what a market hall, a lych gate and a veranda all are, and it is
+   * the one silhouette that reads unambiguously as *not a building you go
+   * inside*. A market drawn with walls is a barn.
+   */
+  open?: boolean;
 }
 
 /**
@@ -128,28 +145,110 @@ function derive(typeId: string, variant: number): Block[] {
       break;
     case 'watermill':
       blocks.push(leanTo(main, look, -1, 0.55));
+      main.feature = 'wheel';
       break;
     case 'foundry':
     case 'tannery':
       blocks.push(leanTo(main, look, 1, 0.5));
       break;
-    case 'market':
-      // An open cross of stalls under one wide roof: no walls to speak of.
-      blocks.push(crossWing(main, look, 0.55));
+
+    case 'quarry': {
+      // A quarry is **a hole in the ground with stone coming out of it**, not a
+      // building. It was rendering as a dark shed, which is the single least
+      // informative thing it could have been. There is no way to cut the terrain
+      // from here, so it is built the other way round: a stepped worked face,
+      // cut blocks stacked in the yard, and a hut for the tools.
+      const bench = main.width;
+      blocks.length = 0;
+      for (let i = 0; i < 3; i++) {
+        const t = i / 3;
+        blocks.push({
+          u: -bench * 0.08 * i,
+          v: -bench * 0.08 * i,
+          width: main.width * (1 - t * 0.28),
+          depth: main.depth * (1 - t * 0.28),
+          base: 0,
+          height: 1.5 + i * 1.9,
+          rise: 0,
+          form: 'flat',
+          ridgeAlongWidth: true,
+          overhang: 0,
+        });
+      }
+      // Cut blocks waiting to be carted away. Scale, and a reason for the road.
+      for (let i = 0; i < 4; i++) {
+        const a = rnd(variant, 30 + i) * Math.PI * 2;
+        const d = main.width * (0.42 + rnd(variant, 40 + i) * 0.16);
+        blocks.push({
+          u: Math.cos(a) * d,
+          v: Math.sin(a) * d,
+          width: 1.5 + rnd(variant, 50 + i) * 1.1,
+          depth: 1.4 + rnd(variant, 60 + i) * 1,
+          base: 0,
+          height: 0.9 + rnd(variant, 70 + i) * 1.2,
+          rise: 0,
+          form: 'flat',
+          ridgeAlongWidth: true,
+          overhang: 0,
+        });
+      }
+      blocks.push({
+        u: main.width * 0.42,
+        v: -main.depth * 0.42,
+        width: 6,
+        depth: 5,
+        base: 0,
+        height: 3.2,
+        rise: 1.8,
+        form: 'gable',
+        ridgeAlongWidth: true,
+        overhang: 0.5,
+        facade: true,
+        door: true,
+      });
       break;
+    }
+
+    case 'market':
+      // A market hall is a roof on posts standing over an open floor. Given
+      // walls it is a barn, and given a cross-wing it is a barn with a porch —
+      // which is what it used to be. The whole of what makes it legible is that
+      // you can see *through* it.
+      main.open = true;
+      main.facade = false;
+      main.door = false;
+      blocks.unshift(baseCourse(main, 0.9, 1.4));
+      break;
+
+    // ---- Fortification ---------------------------------------------------
+    //
+    // These are composed here rather than by character, because a tower is not
+    // a house with martial trimmings — it is a different kind of object, and
+    // the rules that produce a good farmhouse produce a bad castle.
+    case 'watchtower':
+      // **The building is the tower.** The first version put a turret on the
+      // corner of a shaft that was nearly the same width, which read as two
+      // chimneys side by side rather than as one fortification.
+      main.crown = 'battlement';
+      main.facade = true;
+      blocks.unshift(baseCourse(main, 1.1, 2.2));
+      blocks.push(forebuilding(main, look, 0.3));
+      break;
+
+    case 'keep':
+      // A broad crenellated mass with one slimmer stair turret rising clear of
+      // it, and a low forebuilding carrying the door. The turret has to be
+      // *obviously* thinner than the mass or the two read as one lumpy shaft.
+      main.crown = 'battlement';
+      blocks.unshift(baseCourse(main, 1.3, 2.6));
+      blocks.push(stairTurret(main), forebuilding(main, look, 0.38));
+      break;
+
     default:
       composeByStyle(blocks, main, typeId, look, variant);
   }
 
-  if (look.tower) {
-    // A fortification is crenellated all over, not only on its turret. Putting
-    // the crown on the main mass as well is what turns a grey box with a stub on
-    // it into something that reads as a castle at any zoom.
-    if (look.tower.crown === 'battlement' && main.form === 'flat') {
-      main.crown = 'battlement';
-    }
-    blocks.push(tower(look, type.width, type.depth));
-  }
+  if (look.tower) blocks.push(tower(look, type.width, type.depth));
 
   return blocks;
 }
@@ -192,9 +291,14 @@ function composeByStyle(
       break;
 
     // Industry is a big shed with smaller ones bolted to it, and a flue.
+    //
+    // Not for housing, though. A workers' terrace emits `industrious` — that is
+    // the whole point of it — so the style rules were giving a row of cottages a
+    // twenty-metre factory chimney. **Character says what a building is built
+    // like; it does not say what the building is for.**
     case 'industrious':
       blocks.push(leanTo(main, look, r > 0.5 ? 1 : -1, 0.62));
-      if (!look.tower) blocks.push(flue(main, variant));
+      if (!look.tower && family !== 'residential') blocks.push(flue(main, variant));
       break;
 
     // A drinking house is a muddle that has been added to for two centuries.
@@ -208,9 +312,13 @@ function composeByStyle(
       blocks.push(veranda(main, look));
       break;
 
-    // Blunt, and thickened at the base rather than extended outward.
+    // Martial *housing* — a barrack row. Blunt and plain, with a covered
+    // entrance and nothing else. A battered base course belongs on a wall that
+    // has to stop a battering ram; on a terrace it reads as a stone apron laid
+    // in front of the door.
     case 'martial':
-      blocks.push(plinth(main));
+      if (family !== 'residential') blocks.push(baseCourse(main, 0.5, 1.1));
+      else blocks.push(porch(main, look, variant));
       break;
 
     default:
@@ -396,22 +504,85 @@ function veranda(main: Block, look: Appearance): Block {
     ridgeAlongWidth: alongWidth,
     overhang: (look.overhang ?? 0.5) * 1.4,
     leanFrom: -1,
+    open: true,
   };
 }
 
-/** A battered base, so a fortification widens where it meets the ground. */
-function plinth(main: Block): Block {
+/**
+ * A battered base course, so a fortification thickens where it meets the ground.
+ *
+ * Deliberately *low and barely wider* than the mass above it. The first version
+ * was two metres tall and a metre and a half proud on every side, which does not
+ * read as a batter at all — it reads as a separate slab the tower has been stood
+ * on, and the dark top surface of the slab reads as a hole.
+ */
+function baseCourse(main: Block, out: number, height: number): Block {
   return {
     u: main.u,
     v: main.v,
-    width: main.width + 1.6,
-    depth: main.depth + 1.6,
+    width: main.width + out * 2,
+    depth: main.depth + out * 2,
     base: 0,
-    height: Math.max(2, main.height * 0.16),
+    height,
     rise: 0,
     form: 'flat',
     ridgeAlongWidth: main.ridgeAlongWidth,
     overhang: 0,
+  };
+}
+
+/**
+ * A slim stair turret at one corner of a keep, rising clear of the battlements.
+ *
+ * Its whole job is to break the silhouette of a box. It must be much thinner
+ * than the mass — a turret two thirds the width of the thing it stands on is
+ * not a turret, it is a second tower.
+ */
+function stairTurret(main: Block): Block {
+  const size = Math.max(3.6, Math.min(main.width, main.depth) * 0.3);
+  const half = size / 2;
+  return {
+    u: main.u - main.width / 2 + half + 0.6,
+    v: main.v - main.depth / 2 + half + 0.6,
+    width: size,
+    depth: size,
+    base: 0,
+    height: main.height + 4.5,
+    rise: 0,
+    form: 'flat',
+    ridgeAlongWidth: true,
+    overhang: 0.45,
+    crown: 'battlement',
+  };
+}
+
+/**
+ * A low block against a fortification, carrying the door.
+ *
+ * Scale is the point. A featureless shaft could be four metres tall or forty;
+ * putting something recognisably one-storey against it settles the question
+ * instantly, and gives the entrance somewhere to be.
+ */
+function forebuilding(main: Block, look: Appearance, fraction: number): Block {
+  const along = main.width >= main.depth;
+  const spanU = along ? main.width : main.depth;
+  const size = Math.max(3.4, spanU * 0.55);
+  const depth = Math.max(2.6, spanU * 0.34);
+  const offset = (along ? main.depth : main.width) / 2 + depth / 2;
+
+  return {
+    u: along ? main.u : main.u + offset,
+    v: along ? main.v + offset : main.v,
+    width: along ? size : depth,
+    depth: along ? depth : size,
+    base: 0,
+    height: Math.max(3, main.height * fraction),
+    rise: 1.2,
+    form: 'gable',
+    ridgeAlongWidth: !along,
+    overhang: (look.overhang ?? 0.5) * 0.8,
+    facade: true,
+    door: true,
   };
 }
 
@@ -434,16 +605,26 @@ function flue(main: Block, variant: number): Block {
 }
 
 /** A spire, stack or turret, taken over from `appearance.ts`. */
+/**
+ * A spire or a stack, at one end of the range's **long** axis.
+ *
+ * That last word was the bug. The offset was always applied along the type's
+ * *width*, and a church is 16m wide by 26m deep — so its tower was pushed
+ * sideways into the middle of the nave, buried, with only the spire poking
+ * through the roof like a flèche. A west tower belongs at the end of the long
+ * axis, standing clear, where you can see the shaft it sits on.
+ */
 function tower(look: Appearance, typeWidth: number, typeDepth: number): Block {
   const t = look.tower!;
   const half = t.width / 2;
-  const battlemented = t.crown === 'battlement';
+  const along = typeWidth >= typeDepth;
+  const span = along ? typeWidth : typeDepth;
+  // Just proud of the gable, so the shaft reads as its own volume.
+  const offset = -(span / 2) - half * 0.35;
+
   return {
-    // A spire or a stack sits at one end of the range. A turret sits on a
-    // *corner*, which is where a real one goes and what makes a keep read as
-    // having a plan rather than a profile.
-    u: -typeWidth / 2 + half + (battlemented ? 0 : 0.5),
-    v: battlemented ? -typeDepth / 2 + half : 0,
+    u: along ? offset : 0,
+    v: along ? 0 : offset,
     width: t.width,
     depth: t.width,
     base: 0,
@@ -451,8 +632,9 @@ function tower(look: Appearance, typeWidth: number, typeDepth: number): Block {
     rise: 0,
     form: 'flat',
     ridgeAlongWidth: true,
-    overhang: battlemented ? 0.5 : 0.2,
+    overhang: 0.25,
     crown: t.crown ?? (t.width < 3.5 ? 'flat' : 'spire'),
     stack: t.width < 3.5,
+    facade: t.width >= 3.5,
   };
 }

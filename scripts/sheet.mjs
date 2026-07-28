@@ -16,9 +16,15 @@
  * the same idea as `npm run trial` applied to appearance instead of behaviour:
  * a controlled subject, rendered by the real build, looked at deliberately.
  *
- *   npm run sheet                     # the whole catalogue
- *   ZOOM=12 OX=60 OY=60 npm run sheet # close on part of it
- *   VIEW=plan npm run sheet           # the same in plan
+ * Each type is labelled in place. Without labels the sheet answers "do these
+ * look good" and never "which one is the tannery", and the second is the
+ * question that gets things fixed — a pass over all twenty-five types turned up
+ * eight defects, none of which had been visible in a townscape.
+ *
+ *   npm run sheet                            # the whole catalogue
+ *   ONLY=keep,watchtower ZOOM=9 npm run sheet  # a few types, close
+ *   VARIANTS=1 COLS=4 GAP=40 npm run sheet     # layout control
+ *   VIEW=plan npm run sheet                    # the same in plan
  */
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -54,6 +60,10 @@ await page.addInitScript(
     zoom: Number(process.env.ZOOM ?? 4.2),
     ox: Number(process.env.OX ?? 0),
     oy: Number(process.env.OY ?? 0),
+    cols: Number(process.env.COLS ?? 5),
+    gap: Number(process.env.GAP ?? 46),
+    variants: Number(process.env.VARIANTS ?? 2),
+    only: process.env.ONLY ?? '',
   },
 );
 
@@ -100,25 +110,37 @@ const report = await page.evaluate(() => {
     'church', 'chapel', 'almshouse', 'tavern', 'alehouse', 'guildhall',
     'watchtower', 'keep',
   ];
+  if (window.__sheet.only) {
+    const want = String(window.__sheet.only).split(',');
+    ids.length = 0;
+    ids.push(...want);
+  }
 
-  const CX = 380;
-  const CY = 380;
-  const cols = 6;
-  const gap = 34;
+  const CX = 340;
+  const CY = 340;
+  const cols = Number(window.__sheet.cols ?? 5);
+  const gap = Number(window.__sheet.gap ?? 46);
   const refused = [];
+  const marks = [];
   let n = 0;
 
+  const variants = Number(window.__sheet.variants ?? 2);
   for (const id of ids) {
-    for (let v = 0; v < 2; v++) {
+    for (let v = 0; v < variants; v++) {
       const col = n % cols;
       const row = Math.floor(n / cols);
-      const placed = world.place(id, { x: CX + col * gap, y: CY + row * gap }, 0);
+      const at = { x: CX + col * gap, y: CY + row * gap };
+      const placed = world.place(id, at, 0);
       if (!placed.ok) refused.push(`${id}: ${placed.reason}`);
+      else if (v === 0) marks.push({ id, x: at.x, y: at.y });
       n++;
     }
   }
 
   world.rebuildFabric();
+  // Clear the generated clutter. Plots, hedges and vegetable rows are lovely in
+  // a town and are exactly what stops you seeing the building being judged.
+  world.decor.items.length = 0;
   view.markBuildingsDirty();
 
   const fx = CX + (cols * gap) / 2 + ox;
@@ -126,14 +148,43 @@ const report = await page.evaluate(() => {
   camera.zoom = zoom;
   camera.centreOnWorld(fx, fy, world.terrain.heightAt(fx, fy), view.currentProjection);
 
-  return { standing: world.buildings.length, wanted: n, refused: refused.slice(0, 8) };
+  return { standing: world.buildings.length, wanted: n, refused: refused.slice(0, 8), marks };
 });
 
 if (process.env.VIEW === 'plan') {
   await page.click('#view-plan');
 }
 
-await page.waitForTimeout(2500);
+await page.waitForTimeout(2200);
+
+// Label each type in place. Without this the sheet answers "do these look good"
+// and never "which one is the tannery", which is the question that gets things
+// fixed.
+await page.evaluate((marks) => {
+  const { world, camera, view } = window.__toy;
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99';
+  document.body.appendChild(host);
+
+  for (const m of marks) {
+    const p = view.currentProjection.project(m.x, m.y, world.terrain.heightAt(m.x, m.y));
+    const sx = p.x * camera.zoom + (camera.viewportWidth / 2 - camera.x * camera.zoom);
+    const sy = p.y * camera.zoom + (camera.viewportHeight / 2 - camera.y * camera.zoom);
+    if (sx < -60 || sy < -20 || sx > innerWidth + 60 || sy > innerHeight + 20) continue;
+
+    const tag = document.createElement('div');
+    tag.textContent = m.id;
+    tag.style.cssText =
+      'position:absolute;transform:translate(-50%,0);' +
+      'font:600 11px ui-monospace,monospace;color:#f4ead6;' +
+      'background:rgba(18,22,26,.82);padding:2px 6px;border-radius:3px;white-space:nowrap';
+    tag.style.left = `${sx}px`;
+    tag.style.top = `${sy + 6}px`;
+    host.appendChild(tag);
+  }
+}, report.marks);
+
+await page.waitForTimeout(300);
 const name = process.env.NAME ?? 'sheet.png';
 await page.screenshot({ path: join(OUT, name) });
 

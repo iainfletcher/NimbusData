@@ -174,6 +174,49 @@ produces olive. The ground came out looking *greener* in February than in
 October. No single screenshot would have shown that, which is why
 `npm run seasons` now exists.
 
+### Going type by type, which is where most of the errors actually were
+
+The grammar was right and the individual buildings were wrong, which is a
+distinction worth keeping. A pass over all twenty-five types — one at a time, on
+flat ground, **labelled** — turned up eight defects, and adding the labels was
+what made it possible. A sheet without them answers *do these look good*; a sheet
+with them answers *which one is the tannery*, and that is the question that gets
+things fixed.
+
+**Two rules came out of it that are worth more than the fixes.**
+
+> **Character says how a building is built. It does not say what the building is
+> for.**
+
+The style rules were being applied to anything that emitted that character, so a
+workers' terrace — which emits `industrious`, that being the entire point of it —
+was given a twenty-metre factory chimney, and a barrack row was given a
+fortification's battered base course laid like a stone apron in front of its
+door. Style extras now check the family.
+
+> **Some buildings are named after a thing, and without the thing they are just
+> a shed.**
+
+A watermill with no wheel is a barn beside a stream. A quarry drawn as a building
+is the least informative thing a quarry could possibly be — it is *a hole in the
+ground with stone coming out of it*. The mill now has a real wheel (rim, hub,
+eight spokes, drawn on whichever gable faces the camera), and the quarry is a
+stepped worked face with cut blocks stacked in the yard and a hut for the tools.
+One piece of recognisable machinery beats any amount of massing, because it is
+the object the building is named for.
+
+**The rest, in order of how wrong they were:**
+
+| What | Why |
+|---|---|
+| A keep's merlons were 4.4m tall | Merlon height scaled with the tower's width. **A merlon is chest-high on a person, whatever it is standing on** — height *and* spacing have to be absolute, so a big keep gets many small merlons and a slim turret a few. |
+| A keep's top was a black hole | Its flat roof was drawn in the building's dark slate. **A flat roof is a deck you stand on** — lead, flags, a wall-walk — and it faces the sky, so it should be among the brightest surfaces in the scene, not the darkest. |
+| A church's tower was buried in the nave | The offset was applied along the type's *width*. A church is 16m wide and 26m deep, so its west tower was pushed sideways into the middle of the building, leaving only a needle through the roof. Towers go at the end of the **long** axis. |
+| A watchtower read as a factory chimney | A turret bolted to the corner of a shaft nearly the same width is two chimneys, not a fortification. **The building is the tower**: crenellate the main mass, and give it courses and a corbel table so a plain shaft has some scale. |
+| A market read as a barn | A market hall is a roof on posts over an open floor, and the whole of what makes it legible is that you can see *through* it. Blocks gained an `open` flag; verandas use it too. |
+| A tower's base read as a separate slab | The batter was 2m tall and 1.5m proud on every side. A base course has to be *low and barely wider* or it is a plinth the tower has been stood on. |
+| The mill wheel was invisible | Drawn on a fixed gable, which is the far one half the time. It now picks whichever end faces the camera. |
+
 ### The lighting change that mattered as much as the grammar
 
 Worth recording separately, because it was cheaper than any algorithm here and
