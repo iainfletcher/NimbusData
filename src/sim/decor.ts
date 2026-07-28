@@ -33,6 +33,18 @@ export type DecorKind =
   | 'fieldStrip'
   | 'sheep';
 
+/**
+ * What kind of tree this is, chosen by **where it grows** rather than at random
+ * (`species()` below).
+ *
+ * One tree shape repeated across a map reads as wallpaper, and randomising the
+ * shape only makes it noisy wallpaper. Deriving it from the ground is the same
+ * principle the rest of this project runs on: willows mark water, pines mark
+ * height, thorn marks poor exposed ground. The wood then *tells you about the
+ * terrain*, which is a thing worth having for free.
+ */
+export type TreeSpecies = 'oak' | 'birch' | 'willow' | 'poplar' | 'pine' | 'thorn';
+
 export interface DecorItem {
   kind: DecorKind;
   pos: Vec2;
@@ -44,6 +56,8 @@ export interface DecorItem {
   variant: number;
   /** Height in metres, where it matters. */
   height: number;
+  /** Trees and bushes only. */
+  species?: TreeSpecies;
 }
 
 export interface Decor {
@@ -164,14 +178,15 @@ function scatterWoodland(
     const edge = (density - 0.58) / 0.18;
     if (rng() > Math.min(1, 0.28 + edge) * returning) continue;
 
-    const conifer = fbm(p.x / 320, p.y / 320, seed ^ 0x31, 2) > 0.56;
+    const kind = species(terrain, p, seed, rng());
     items.push({
-      kind: conifer ? 'conifer' : 'tree',
+      kind: kind === 'pine' ? 'conifer' : 'tree',
       pos: p,
-      size: 2.4 + rng() * 2.2,
+      size: SPECIES_SIZE[kind].size(rng),
       angle: 0,
       variant: rng(),
-      height: conifer ? 9 + rng() * 6 : 7 + rng() * 5,
+      height: SPECIES_SIZE[kind].height(rng),
+      species: kind,
     });
   }
 }
@@ -560,3 +575,41 @@ function verges(
     }
   }
 }
+
+/**
+ * Which tree grows here.
+ *
+ * Read as a sentence about the ground: wet ground grows willow, high or steep
+ * ground grows pine, thin exposed ground grows thorn and birch, and good
+ * lowland grows oak. A stand of poplar turns up occasionally on damp flat
+ * ground, because a line of them is one of the most recognisable things in a
+ * lowland landscape.
+ */
+function species(terrain: Terrain, p: Vec2, seed: number, roll: number): TreeSpecies {
+  const height = terrain.heightAt(p.x, p.y);
+  const slope = terrain.slopeAt(p.x, p.y);
+
+  // Wet ground: near standing water or in the bottom of a valley.
+  const wet = terrain.flowAt(p.x, p.y) > 60 || height < 1.2;
+  if (wet) return roll < 0.7 ? 'willow' : 'poplar';
+
+  // High, steep or cold.
+  if (height > 22 || slope > 0.34) return roll < 0.78 ? 'pine' : 'birch';
+
+  // Thin soil, read from the same coarse field the woods are scattered from.
+  const poor = fbm(p.x / 240, p.y / 240, seed ^ 0x9c31, 2);
+  if (poor > 0.62) return roll < 0.5 ? 'birch' : 'thorn';
+  if (height > 14) return roll < 0.55 ? 'birch' : 'oak';
+
+  return roll < 0.82 ? 'oak' : 'thorn';
+}
+
+/** How big each species gets. A thorn is not a small oak; it is a thorn. */
+const SPECIES_SIZE: Record<TreeSpecies, { size: (r: () => number) => number; height: (r: () => number) => number }> = {
+  oak: { size: (r) => 3.2 + r() * 2.2, height: (r) => 8 + r() * 5 },
+  birch: { size: (r) => 1.9 + r() * 0.9, height: (r) => 9 + r() * 4 },
+  willow: { size: (r) => 3.4 + r() * 1.8, height: (r) => 7 + r() * 3 },
+  poplar: { size: (r) => 1.5 + r() * 0.6, height: (r) => 14 + r() * 6 },
+  pine: { size: (r) => 2.4 + r() * 1.4, height: (r) => 10 + r() * 7 },
+  thorn: { size: (r) => 1.6 + r() * 0.9, height: (r) => 4 + r() * 2 },
+};

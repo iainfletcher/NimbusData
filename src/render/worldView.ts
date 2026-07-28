@@ -12,6 +12,7 @@ import {
   type StreetVertex,
   channelWidth,
   type Person,
+  type Season,
   type Vec2,
   type Warband,
   type World,
@@ -28,12 +29,14 @@ import {
   CONTESTED_COLOUR,
   FLAT_LAMBERT,
   FRONTIER_COLOUR,
+  GROUND_SEASON,
   SUN,
   TERRITORY_COLOURS,
   lambertOf,
   lit,
   shade,
   terrainColour,
+  toward,
   waterColour,
 } from './palette';
 import { massOf, type Block } from './massing';
@@ -81,11 +84,13 @@ export class WorldView {
   private projection: Projection;
   private terrainCacheMode: ViewMode | null = null;
   private terrainCacheShape = -1;
+  private terrainCacheSeason: Season | null = null;
 
   private buildingsDirty = true;
   private overlayDirty = true;
   private streetsDirty = true;
   private lastFabricVersion = -1;
+  private lastSeason: Season | null = null;
 
   showOverlay = false;
   showStreets = true;
@@ -182,14 +187,23 @@ export class WorldView {
 
     if (
       this.terrainCacheMode !== this.mode ||
-      this.terrainCacheShape !== this.world.terrain.shape
+      this.terrainCacheShape !== this.world.terrain.shape ||
+      this.terrainCacheSeason !== this.world.calendar.season
     ) {
       this.drawTerrain();
       this.terrainCacheMode = this.mode;
       this.terrainCacheShape = this.world.terrain.shape;
+      this.terrainCacheSeason = this.world.calendar.season;
       // Everything else sits on the ground, so it moves when the ground does.
       this.streetsDirty = true;
       this.overlayDirty = true;
+      this.buildingsDirty = true;
+    }
+
+    // Foliage turns with the year, and the static bands are cached — so the
+    // season has to invalidate them or the wood would stay green through winter.
+    if (this.world.calendar.season !== this.lastSeason) {
+      this.lastSeason = this.world.calendar.season;
       this.buildingsDirty = true;
     }
 
@@ -244,6 +258,7 @@ export class WorldView {
     const t = this.world.terrain;
     const step = TERRAIN_STEP;
     const s = CELL_SIZE * step;
+    const ground = GROUND_SEASON[this.world.calendar.season];
 
     for (let cy = 0; cy < t.height; cy += step) {
       for (let cx = 0; cx < t.width; cx += step) {
@@ -277,7 +292,8 @@ export class WorldView {
 
         // Break up the flat green: patchy grazing, drier ground, bare scrapes.
         const patch = (fbm(wx / 62, wy / 62, this.world.seed ^ 0xa17, 2) - 0.5) * 0.15;
-        const colour = lit(shade(terrainColour(avg), patch), lambert);
+        const turned = toward(terrainColour(avg), ground.tint, ground.mix);
+        const colour = lit(shade(turned, patch), lambert);
 
         const p00 = this.project(wx, wy, h00);
         const p10 = this.project(wx + s, wy, h10);
@@ -729,6 +745,7 @@ export class WorldView {
       project: (wx, wy, h) => this.project(wx, wy, h),
       groundAt: (wx, wy) => this.world.terrain.heightAt(wx, wy),
       isPlan: this.mode === 'plan',
+      season: this.world.calendar.season,
     };
   }
 
@@ -1357,40 +1374,17 @@ export class WorldView {
       }
     };
 
-    if (negFirst) {
-      slopeNeg();
-      slopePos();
-    } else {
-      slopePos();
-      slopeNeg();
-    }
+    // ---- Draw order --------------------------------------------------------
+    //
+    // A roof is a tent, and the two triangles closing its ends are **not both
+    // in front of it**. The far one is behind the slopes and the near one is in
+    // front of them, so painting both after the slopes puts the far gable on
+    // top of the roof — which reads, unmistakably, as a roof with a side
+    // missing. That is the bug this ordering exists to prevent, and it was
+    // visible on every gabled building in the game.
+    //
+    // So: far end, then both slopes back-to-front, then near end.
 
-    // A ridge cap, so the two slopes meet in a line rather than a seam.
-    if (!lean) {
-      g.poly([
-        ridgeA.x, ridgeA.y - 0.6, ridgeB.x, ridgeB.y - 0.6,
-        ridgeB.x, ridgeB.y + 0.5, ridgeA.x, ridgeA.y + 0.5,
-      ]).fill({ color: shade(roof, -0.28), alpha });
-    }
-
-    if (block.dormers) {
-      this.drawDormers(g, block, at, halfU, halfV, eaves, ridgeH, alpha, wall, roof, flat);
-    }
-
-    if (block.form === 'hip') {
-      const hipColour = flat ? roof : lit(roof, slopeNormal(1) * 0.4 + slopeNormal(-1) * 0.4, 0.04);
-      g.poly([
-        eaveNegA.x, eaveNegA.y, eavePosA.x, eavePosA.y, ridgeA.x, ridgeA.y,
-      ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
-      g.poly([
-        eaveNegB.x, eaveNegB.y, eavePosB.x, eavePosB.y, ridgeB.x, ridgeB.y,
-      ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
-      return;
-    }
-
-    // Gable and lean ends are wall carried up to the ridge — the silhouette that
-    // reads most strongly as a house. They stand on the wall line, inside the
-    // eaves, and are lit as the wall below them so the two do not disagree.
     const wallU = halfU - over;
     const wallV = halfV - over;
     const endAxis = alongWidth ? { x: cos, y: sin } : { x: -sin, y: cos };
@@ -1404,6 +1398,14 @@ export class WorldView {
     const apexV = lean ? wallV * leanFrom : 0;
     const apexA = at(-wallU, apexV, ridgeH);
     const apexB = at(wallU, apexV, ridgeH);
+
+    const centreA = alongWidth
+      ? this.local(b, block.u - wallU, block.v)
+      : this.local(b, block.u, block.v - wallU);
+    const centreB = alongWidth
+      ? this.local(b, block.u + wallU, block.v)
+      : this.local(b, block.u, block.v + wallU);
+    const aNearer = centreA.x + centreA.y > centreB.x + centreB.y;
 
     const gable = (
       n: Point,
@@ -1441,16 +1443,56 @@ export class WorldView {
       });
     };
 
-    const centreA = alongWidth
-      ? this.local(b, block.u - wallU, block.v)
-      : this.local(b, block.u, block.v - wallU);
-    const centreB = alongWidth
-      ? this.local(b, block.u + wallU, block.v)
-      : this.local(b, block.u, block.v + wallU);
-    const aNearer = centreA.x + centreA.y > centreB.x + centreB.y;
+    const hipColour = flat
+      ? roof
+      : lit(roof, slopeNormal(1) * 0.4 + slopeNormal(-1) * 0.4, 0.04);
 
-    gable(gNegA, gPosA, apexA, gableColour(-1), aNearer);
-    gable(gNegB, gPosB, apexB, gableColour(1), !aNearer);
+    /** Close one end of the roof: a hipped slope, or a gable wall. */
+    const endA = () => {
+      if (block.form === 'hip') {
+        g.poly([
+          eaveNegA.x, eaveNegA.y, eavePosA.x, eavePosA.y, ridgeA.x, ridgeA.y,
+        ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
+      } else {
+        gable(gNegA, gPosA, apexA, gableColour(-1), aNearer);
+      }
+    };
+
+    const endB = () => {
+      if (block.form === 'hip') {
+        g.poly([
+          eaveNegB.x, eaveNegB.y, eavePosB.x, eavePosB.y, ridgeB.x, ridgeB.y,
+        ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
+      } else {
+        gable(gNegB, gPosB, apexB, gableColour(1), !aNearer);
+      }
+    };
+
+    if (aNearer) endB();
+    else endA();
+
+    if (negFirst) {
+      slopeNeg();
+      slopePos();
+    } else {
+      slopePos();
+      slopeNeg();
+    }
+
+    // A ridge cap, so the two slopes meet in a line rather than a seam.
+    if (!lean) {
+      g.poly([
+        ridgeA.x, ridgeA.y - 0.6, ridgeB.x, ridgeB.y - 0.6,
+        ridgeB.x, ridgeB.y + 0.5, ridgeA.x, ridgeA.y + 0.5,
+      ]).fill({ color: shade(roof, -0.28), alpha });
+    }
+
+    if (block.dormers) {
+      this.drawDormers(g, block, at, halfU, halfV, eaves, ridgeH, alpha, wall, roof, flat);
+    }
+
+    if (aNearer) endA();
+    else endB();
   }
 
   /**

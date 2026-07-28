@@ -11,7 +11,8 @@
     "check": "npm run check:layers && npm run typecheck",
     "smoke": "node scripts/smoke.mjs",
     "trial": "node scripts/trial.mjs",
-    "sheet": "node scripts/sheet.mjs"
+    "sheet": "node scripts/sheet.mjs",
+    "seasons": "node scripts/seasons.mjs"
   },
   "repository": {
     "type": "git",

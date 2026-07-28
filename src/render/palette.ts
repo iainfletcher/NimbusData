@@ -183,3 +183,29 @@ export const BANNER_COLOURS = [0xffdb8a, 0xa8c8ff];
 
 /** Where neither side can hold: a battle line. Neither banner, and alarming. */
 export const CONTESTED_COLOUR = 0xff7a4d;
+
+/**
+ * How the ground itself turns through the year.
+ *
+ * Turning the trees and leaving the fields summer-green does about half a job:
+ * a bare wood standing on lush grass reads as a bug rather than as February.
+ * The land is most of the picture, so it has to turn too — and once it does,
+ * winter is a different *landscape* rather than the same one with thinner trees.
+ *
+ * Deliberately restrained. This is a British year, not a set of filters: a wash
+ * toward fresh green, toward dry gold, toward dull ochre, and back.
+ */
+export const GROUND_SEASON: Record<string, { tint: number; mix: number }> = {
+  spring: { tint: 0x9ec254, mix: 0.28 },
+  summer: { tint: 0x6f8a46, mix: 0.1 },
+  autumn: { tint: 0xb2953f, mix: 0.36 },
+  // Cold and grey, not merely a different green. The first attempt picked a
+  // greyish *olive*, which mixed with an olive base produces olive — the ground
+  // came out looking greener in February than in October.
+  winter: { tint: 0x8d9382, mix: 0.62 },
+};
+
+/** Mix a colour toward another by t. Shared with the decor renderer. */
+export function toward(colour: number, target: number, t: number): number {
+  return mix(colour, target, t);
+}

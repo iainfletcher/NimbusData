@@ -115,6 +115,65 @@ layering rule holds and the simulation stays engine-agnostic.
 measured against the previous commit built from a worktree. About 17% for a
 large multiple of the geometry, which is the right trade.
 
+### The bug this all shipped with, and why it took a fresh pair of eyes
+
+Every gabled building in the game rendered with a side missing, and I had looked
+at a dozen screenshots without seeing it.
+
+A roof is a tent, and the two triangles closing its ends are **not both in front
+of it**: the far one sits behind the slopes, the near one in front. Both were
+being painted after both slopes, so the far gable landed on top of the roof — a
+flat triangle exactly where the far slope should have been. Correct order is far
+end, then the slopes back to front, then the near end.
+
+Worth recording as a lesson rather than a fix. It survived because I was reading
+the *silhouette* — which was right — and the missing slope only shows if you look
+at a roof and ask what each face is. The contact sheet below is the answer to
+that class of mistake, and it still needed somebody to ask the question.
+
+### Trees, on the same argument as buildings
+
+Trees were a stick with three circles on it, which is a lollipop, and every
+lollipop on the map was the same lollipop. The fix is the mass-grammar argument
+again: at this scale **you cannot see a twig, so branch structure buys nothing —
+silhouette is the whole of it.** Six species with genuinely different profiles
+beat one species with better detail, and cost less.
+
+Oak is broad and low-slung, birch narrow and upright on a pale trunk, willow wide
+and weeping over its own trunk, poplar a column, thorn small and scrubby, pine
+tiered. The canopy is a golden-angle spiral of blobs rather than concentric
+circles, each lit by where it sits in the crown, so the mass has a sunward
+shoulder and a cool underside.
+
+**Species is chosen by where the tree grows**, not at random — willows on wet
+ground and valley bottoms, pine high or steep, birch and thorn on thin exposed
+soil, oak on good lowland. Randomising the shape only makes noisy wallpaper;
+deriving it from the ground means the wood *tells you about the terrain*, which
+is the same principle the rest of the project runs on and is free.
+
+### The year became visible
+
+The strongest thing to come out of the tree work was not the trees.
+
+The calendar already drove the harvest, the labour and what the town ate, and the
+only way to see what month it was was to read a text plate in the corner.
+Foliage now turns with the season — fresh green, deep green, gold, and bare — and
+so does the ground, the hedges and the garden rows.
+
+> **The season stopped being something you look up and became something you
+> notice out of the window.**
+
+Winter takes the leaves off entirely, so a bare wood on dull ground is a
+different landscape rather than the same one with thinner trees. That matters
+beyond decoration: `00` Axis 7 makes winter the pressure the whole economy is
+built around, and until now it was invisible.
+
+One tuning finding, caught only by rendering all four seasons side by side: the
+first winter palette was a greyish **olive**, which mixed with an olive base
+produces olive. The ground came out looking *greener* in February than in
+October. No single screenshot would have shown that, which is why
+`npm run seasons` now exists.
+
 ### The lighting change that mattered as much as the grammar
 
 Worth recording separately, because it was cheaper than any algorithm here and
