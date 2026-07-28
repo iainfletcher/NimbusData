@@ -82,6 +82,18 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - A rival that actually grows, building toward the frontier and reinforcing its
   own character, with no rubber band
 
+- **An army that is a product of your town.** A column takes the character of
+  the quarter that raised it — a keep among the foundries raises an armoured
+  column, one out on the farms raises a numerous, brittle levy, a devout quarter
+  raises sworn men who do not break. Nothing is picked from a roster: the choice
+  was made when you decided what that part of town was going to be. The charge on
+  its banner says which
+- **The high ground decides fights.** Two identical columns on the level destroy
+  each other; seven metres uphill, one walks away at 41%. Decisive, and still
+  losable to numbers
+- **Deployment answers before you commit** — the march line runs gold to ground
+  that will feed a column and grey-and-crossed to ground that will starve it
+
 - The military half of the lead pillar (`design/01`): watchtowers and keeps that
   hold ground the moment they stand and lose it the moment they fall; held vs
   integrated territory, with the production and growth penalties that make a

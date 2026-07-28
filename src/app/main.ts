@@ -9,6 +9,7 @@ import {
   ageThatUnlocks,
   NEED_LABELS,
   NEED_SHORT,
+  temperOf,
   type BuildingFamily,
   planRoads,
   type PlanKind,
@@ -779,9 +780,15 @@ async function main(): Promise<void> {
     const mine = world.military.bandsOf(0);
     const theirs = world.military.bandsOf(1);
     const starving = mine.filter((b) => !b.supplied).length;
+    // What our columns *are*, not only how many. Two levies and a company of
+    // regulars is a different army from three levies, and the difference is
+    // decided by which keeps raised them.
+    const kinds = [...new Set(mine.map((b) => temperOf(b.character).name.toLowerCase()))];
     rBands.textContent = mine.length + theirs.length === 0
       ? '—'
-      : `${mine.length} v ${theirs.length}` + (starving ? ` · ${starving} starving` : '');
+      : `${mine.length} v ${theirs.length}` +
+        (kinds.length ? ` · ${kinds.join(', ')}` : '') +
+        (starving ? ` · ${starving} starving` : '');
     rBands.classList.toggle('low', starving > 0);
     rUpkeep.textContent =
       world.economy.upkeep > 0 ? `${world.economy.upkeep.toFixed(2)} food/tick` : '—';

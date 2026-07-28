@@ -358,13 +358,102 @@ Warbands route by flooding the same cost field culture travels on. Roads are
 cheap in that field, so **armies march on roads** without a line of code saying
 so. That was not intended and it is the right behaviour.
 
+## 11. Built — what a column *is*, and where it fights
+
+The limit recorded below as "combat is one rule" turned out to be worse than the
+wording admits, and worth fixing before anything else in this pillar.
+
+Attrition was **symmetric**: `strength × rate` in both directions. So a fight
+was decided the instant the two columns touched — arrive with more and win,
+arrive with less and lose, and nothing that happened in between mattered.
+Combat was the one system in this game with **no spatial decision in it**, which
+is a strange property for the lead pillar to have, and it is thinner than
+Polytopia — the game the brief says to be more developed than.
+
+The obvious fix is unit types with a roster, and it is wrong here for exactly
+the reason a research tree was wrong for the ages: a picker is a menu, and menus
+are admin. So:
+
+> **What a column is, is decided by where it was raised. Where it fights decides
+> how it goes.**
+
+### A column takes the character of the quarter that raised it
+
+Seven tempers, one per character, four numbers each — bite, guard, pace, and the
+strength at which it breaks. A keep among the foundries raises **an armoured
+column**: fewer men, better arms, slow. One out on the farms raises **a levy**:
+numerous, willing, no good in a stand-up fight. A garrison quarter raises
+**regulars**. A devout one raises **sworn men**, who do not break at all.
+
+There is nothing to choose at muster time, and that is the point: the choice was
+made hours earlier when you decided what that part of your town was going to
+*be*. It is the same decision the rest of the game is played in, cashed out
+somewhere new.
+
+Measured, from the same button on the same map: among the foundries, *an
+armoured column, musters at 0.90*; out on the farms, *a levy, musters at 1.30*.
+
+### The third time the same bug has been caught
+
+The first implementation read the character field at the keep. A keep emits
+`martial` at 1.8 over 140 metres, so it drowns out whatever it is standing in,
+and **every column came out as regulars, everywhere, always** — the building
+reading its own presence and calling it the character of the town. One trial run
+caught it.
+
+That is now three times, in three systems: the rival fortifying because a
+watchtower made the ground feel martial (§10); a keep's own contour counting as
+ground its owner had integrated (§10); and this. The rule is worth stating once:
+
+> **A fortification never reads its own presence as the character of the place it
+> is standing in.**
+
+The tally is taken from the buildings around the keep with military excluded,
+which is also the more honest question — a garrison quarter is martial because
+of the barrack rows *around* the keep, and a lone tower in a field of wheat
+raises farmers.
+
+### The high ground
+
+The only thing that makes *where* a battle happens a decision rather than an
+accident, and the only terrain feature the player can already see with no
+interface at all. A column fighting uphill deals less and takes more, capped so
+that it never beats arriving with twice the men.
+
+The rate is set against the ground the generator actually makes, not a round
+number: a column can only stand where the terrain varies by under four metres
+across it, so two columns in contact are realistically five to ten metres apart
+in height. Measured, two identical columns:
+
+- **Level ground: neither left standing.** They destroy each other.
+- **Seven metres uphill: theirs left standing at 0.41.** One walks away.
+
+A seven-metre rise decides a battle that was otherwise a mutual annihilation.
+That is the right magnitude — decisive, and still losable to numbers.
+
+### Deployment answers before you commit, not after
+
+A column ordered outside supply starves, and you used to find that out by
+watching the pennant droop a minute after committing. The march line now answers
+it while you are still deciding: gold to ground that will feed them, grey and
+crossed to ground that will not. Being told after the column has starved is not
+an answer, it is an autopsy.
+
+### And the bug the levy exposed
+
+Recovery was capped at 1 for everybody. A levy musters at 1.3 — being numerous
+is the *whole* of what a levy is — so the cap silently deleted its only
+advantage on its first supplied tick. Capped at what the column musters at now.
+
 ### Honest limits
 
-- **Combat is one rule.** Columns in contact wear each other down in proportion
-  to the other's strength — Lanchester attrition, chosen because it needs no
-  numbers on screen and because the decisions were all made beforehand: where you
-  built, whether you could afford an army, whether your ground would feed it.
-  Whether that is *enough* game is untested by anything but me.
+- **Combat is still one rule**, and now the rule has ground and character in it.
+  Columns in contact wear each other down in proportion to the other's strength,
+  modified by what each is and who has the hill. There is still no manoeuvre
+  inside a battle, no flanking and no formation, and that is deliberate: the
+  decisions are meant to be *where you built*, *what you built there*, *whether
+  your ground will feed them* and *where you choose to meet*. Whether that is
+  enough game is untested by anything but me.
 - **The rival's soldiers are not clever.** It musters on a fixed clock and marches
   at whatever of yours is nearest. Deliberate: a cleverer opponent would make a
   moving border tell you about the AI rather than about your town.

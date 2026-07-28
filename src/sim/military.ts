@@ -8,6 +8,7 @@ import {
   WORLD_CELLS,
   WORLD_SIZE,
   type Building,
+  type Character,
   type Vec2,
 } from './types';
 
@@ -83,7 +84,85 @@ const CLASH_RATE = 0.055;
 const SIEGE_TICKS = 55;
 
 /** What raising a warband costs, and how long a keep needs between musters. */
-export const MUSTER_COST = { timber: 25, food: 40, iron: 12 };
+export const MUSTER_COST = { timber: 20, food: 40, iron: 10, tools: 5 };
+
+/**
+ * What a column is like.
+ *
+ * Every warband used to be one number. Two columns meeting resolved as
+ * `strength × rate` in both directions, which means **a fight was decided
+ * before it started** — arrive with more and win, arrive with less and lose,
+ * and nothing you did in between mattered. Combat was the one system in this
+ * game with no spatial decision in it, which is a strange thing for the lead
+ * pillar to be.
+ *
+ * The obvious fix is unit types with a roster to pick from, and it is the wrong
+ * one for the same reason a research tree was wrong for the ages: a picker is a
+ * menu, and menus are admin. So instead:
+ *
+ * > **What a column is, is decided by where it was raised.**
+ *
+ * A warband takes the character of the quarter that mustered it. Regulars come
+ * out of a garrison quarter; an armoured column out of an industrious one; a
+ * numerous, brittle levy off the farms. There is nothing to choose at muster
+ * time — the choice was made hours earlier, when you decided what that part of
+ * your town was going to *be*, and it is the same decision the whole game is
+ * played in.
+ *
+ * Four numbers, because four is enough to make columns feel different and few
+ * enough that the effect of each is legible in a fight you watch.
+ */
+export interface Temper {
+  /** Told to the player when the column is raised. */
+  name: string;
+  /** Damage dealt, relative. */
+  bite: number;
+  /** Damage taken, relative. Lower is better armoured. */
+  guard: number;
+  /** March speed, relative. */
+  pace: number;
+  /** Strength it musters at. A levy is numerous; an armoured column is not. */
+  muster: number;
+  /** Strength at which it breaks and goes home. Zero means it never does. */
+  resolve: number;
+}
+
+const TEMPERS: Record<Character, Temper> = {
+  // Professionals. Nothing spectacular in any direction, and hard to kill.
+  martial: { name: 'Regulars', bite: 1.15, guard: 0.78, pace: 1, muster: 1, resolve: 0.06 },
+  // Armoured and well-armed, and there are fewer of them for the same price.
+  industrious: { name: 'An armoured column', bite: 1.34, guard: 0.86, pace: 0.85, muster: 0.9, resolve: 0.1 },
+  // Numerous, willing, and no good in a stand-up fight.
+  rustic: { name: 'A levy', bite: 0.82, guard: 1.2, pace: 1.05, muster: 1.3, resolve: 0.26 },
+  // They do not break. That is the whole of what they are.
+  devout: { name: 'Sworn men', bite: 0.95, guard: 0.98, pace: 0.95, muster: 1, resolve: 0 },
+  // Bought rather than raised: quick to move, quick to decide it is not worth it.
+  mercantile: { name: 'Hired men', bite: 1.08, guard: 1, pace: 1.15, muster: 1, resolve: 0.32 },
+  // Ferocious for about a minute.
+  raucous: { name: 'A rabble', bite: 1.25, guard: 1.3, pace: 1.12, muster: 1.1, resolve: 0.3 },
+  // Not soldiers. A quarter of orchards raises what a quarter of orchards can.
+  verdant: { name: 'A militia', bite: 0.86, guard: 1.12, pace: 1, muster: 1.05, resolve: 0.22 },
+};
+
+/** What comes out of ground with no clear character: a plain warband. */
+export const PLAIN_TEMPER: Temper = {
+  name: 'A warband', bite: 1, guard: 1, pace: 1, muster: 1, resolve: 0.12,
+};
+
+export function temperOf(character: Character | null): Temper {
+  return character ? TEMPERS[character] : PLAIN_TEMPER;
+}
+
+/**
+ * How much the high ground is worth.
+ *
+ * The one thing that makes *where* a battle happens a decision rather than an
+ * accident. Deliberately large enough to be worth marching for and small enough
+ * that it never beats arriving with twice the men: a twenty-metre advantage is
+ * about a third more damage, which is a hill, not a cheat code.
+ */
+const HEIGHT_EDGE = 0.028;
+const HEIGHT_CAP = 0.34;
 export const MUSTER_COOLDOWN = 70;
 
 /** Food per tick a warband in the field eats. Soldiers cost more than walls. */
@@ -127,6 +206,11 @@ export interface Warband {
   bearing: number;
   /** Ticks spent sitting on top of an enemy garrison. */
   siege: number;
+  /**
+   * The character of the quarter that raised it, which is what it is *like*.
+   * Null when it came out of ground with nothing to say.
+   */
+  character: Character | null;
 }
 
 /** What the territory layer needs to know to answer "who holds this". */
@@ -268,17 +352,19 @@ export class Military {
 
   // ---- Warbands ----------------------------------------------------------
 
-  muster(owner: number, at: Vec2): Warband {
+  muster(owner: number, at: Vec2, character: Character | null = null): Warband {
+    const temper = temperOf(character);
     const band: Warband = {
       id: this.nextId++,
       owner,
       pos: { x: at.x, y: at.y },
       target: null,
       route: [],
-      strength: 1,
+      strength: temper.muster,
       supplied: true,
       bearing: 0,
       siege: 0,
+      character,
     };
     this.warbands.push(band);
     return band;
@@ -391,12 +477,17 @@ export class Military {
       this.feed(w, integratedAt);
     }
 
-    this.clash();
+    this.clash(terrain);
     this.besiege(onRaze, buildings);
 
     for (let i = this.warbands.length - 1; i >= 0; i--) {
       const band = this.warbands[i];
-      if (band.strength > 0.02) continue;
+      // A column stops fighting when it has had enough, and how much is enough
+      // depends on what it is. Sworn men fight to nothing; a rabble is gone the
+      // moment it stops being fun. Starving overrides it — hunger takes a
+      // column all the way down however willing it is.
+      const breaks = band.supplied ? Math.max(0.02, temperOf(band.character).resolve) : 0.02;
+      if (band.strength > breaks) continue;
       // Why a column died is the interesting part: starved is a supply failure
       // and therefore the player's planning; broken is a battle they lost.
       onLost?.(band, !band.supplied);
@@ -427,7 +518,7 @@ export class Military {
     }
 
     const desired = Math.atan2(dy, dx);
-    const step = Math.min(MARCH_SPEED, distance);
+    const step = Math.min(MARCH_SPEED * temperOf(w.character).pace, distance);
 
     for (const spread of [0, 0.5, -0.5, 1.05, -1.05, 1.7, -1.7]) {
       const a = desired + spread;
@@ -448,25 +539,40 @@ export class Military {
     else w.target = null;
   }
 
-  /** Supply from integrated ground only, never from ground merely held. */
-  private feed(w: Warband, integratedAt: (wx: number, wy: number) => number | null): void {
-    let supplied = integratedAt(w.pos.x, w.pos.y) === w.owner;
-
-    if (!supplied) {
-      for (let i = 0; i < 8 && !supplied; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        for (const r of [SUPPLY_RANGE * 0.5, SUPPLY_RANGE]) {
-          if (integratedAt(w.pos.x + Math.cos(a) * r, w.pos.y + Math.sin(a) * r) === w.owner) {
-            supplied = true;
-            break;
-          }
-        }
+  /**
+   * Would a column of this owner be in supply here?
+   *
+   * Public because it is the question the player is actually asking when they
+   * point at a piece of ground and consider marching to it. Being told the
+   * answer *after* the column has starved is not an answer, it is an autopsy.
+   */
+  suppliedAt(
+    at: Vec2,
+    owner: number,
+    integratedAt: (wx: number, wy: number) => number | null,
+  ): boolean {
+    if (integratedAt(at.x, at.y) === owner) return true;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      for (const r of [SUPPLY_RANGE * 0.5, SUPPLY_RANGE]) {
+        if (integratedAt(at.x + Math.cos(a) * r, at.y + Math.sin(a) * r) === owner) return true;
       }
     }
+    return false;
+  }
+
+  /** Supply from integrated ground only, never from ground merely held. */
+  private feed(w: Warband, integratedAt: (wx: number, wy: number) => number | null): void {
+    const supplied = this.suppliedAt(w.pos, w.owner, integratedAt);
 
     w.supplied = supplied;
+    // Recovery is capped at what this kind of column musters at, not at 1. A
+    // levy is *numerous* — that is the whole of what a levy is — and capping
+    // everybody at one erased it on the first supplied tick, quietly deleting
+    // the only advantage the farms have.
+    const full = temperOf(w.character).muster;
     w.strength = supplied
-      ? Math.min(1, w.strength + RECOVER_RATE)
+      ? Math.min(full, w.strength + RECOVER_RATE)
       : w.strength - STARVE_RATE;
   }
 
@@ -480,7 +586,7 @@ export class Military {
    * click during a battle, because the decisions were where to build, whether to
    * muster, and whether you had supply — all of which were made beforehand.
    */
-  private clash(): void {
+  private clash(terrain: Terrain): void {
     const damage = new Map<number, number>();
 
     for (let i = 0; i < this.warbands.length; i++) {
@@ -490,8 +596,26 @@ export class Military {
         if (a.owner === b.owner) continue;
         if (Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y) > CLASH_RANGE) continue;
 
-        damage.set(a.id, (damage.get(a.id) ?? 0) + b.strength * CLASH_RATE);
-        damage.set(b.id, (damage.get(b.id) ?? 0) + a.strength * CLASH_RATE);
+        // **The high ground.** The one thing that makes *where* a battle
+        // happens a decision rather than an accident, and the only terrain
+        // feature the player can already see without any interface at all.
+        const ha = terrain.heightAt(a.pos.x, a.pos.y);
+        const hb = terrain.heightAt(b.pos.x, b.pos.y);
+        const edge = Math.max(-HEIGHT_CAP, Math.min(HEIGHT_CAP, (ha - hb) * HEIGHT_EDGE));
+
+        const ta = temperOf(a.character);
+        const tb = temperOf(b.character);
+
+        // Symmetric no longer: what each side deals is its own bite against the
+        // other's guard, on its own ground.
+        damage.set(
+          a.id,
+          (damage.get(a.id) ?? 0) + b.strength * CLASH_RATE * tb.bite * ta.guard * (1 - edge),
+        );
+        damage.set(
+          b.id,
+          (damage.get(b.id) ?? 0) + a.strength * CLASH_RATE * ta.bite * tb.guard * (1 + edge),
+        );
       }
     }
 

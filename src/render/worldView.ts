@@ -1122,12 +1122,29 @@ export class WorldView {
       this.ghost.poly(ring).stroke({ color: colour, width: 0.6, alpha: 0.85 });
 
       if (w.target) {
+        // **Would it be in supply when it got there?**
+        //
+        // Deployment is the one order in the game that can quietly kill a
+        // column, and until now you found out by watching the pennant droop a
+        // minute after committing. The march line answers it while you are
+        // still deciding: gold to ground that will feed them, grey to ground
+        // that will not.
+        const fed = this.world.suppliedAt(w.target, w.owner);
+        const line = fed ? colour : 0x8a8579;
         const to = this.projectOnGround(w.target);
         this.ghost
           .moveTo(base.x, base.y)
           .lineTo(to.x, to.y)
-          .stroke({ color: colour, width: 0.4, alpha: 0.4 });
-        this.ghost.circle(to.x, to.y, 2).stroke({ color: colour, width: 0.5, alpha: 0.7 });
+          .stroke({ color: line, width: 0.4, alpha: fed ? 0.4 : 0.55 });
+        this.ghost.circle(to.x, to.y, 2).stroke({ color: line, width: 0.5, alpha: 0.7 });
+        if (!fed) {
+          // A cross through the mark, because grey alone is a colour and this
+          // needs to be a statement.
+          this.ghost
+            .moveTo(to.x - 1.5, to.y - 1.5).lineTo(to.x + 1.5, to.y + 1.5)
+            .moveTo(to.x - 1.5, to.y + 1.5).lineTo(to.x + 1.5, to.y - 1.5)
+            .stroke({ color: line, width: 0.45, alpha: 0.8 });
+        }
       }
     }
 
@@ -1170,6 +1187,13 @@ export class WorldView {
       g.circle(head.x, head.y, 0.66).fill(HELMET);
     }
 
+    // A charge on the banner, in the colour of the quarter that raised this
+    // column (`military.ts` — what a column is, is decided by where it was
+    // raised). It is the only thing on screen that says *what kind* of men
+    // these are, and it belongs on the flag rather than in a tooltip: two
+    // columns closing on each other should be tellable apart at a glance, from
+    // the same distance you can already tell whose they are.
+
     // The banner, and it is deliberately out of all scale — taller than the
     // houses it passes. A column you have to hunt for is a column you will lose,
     // and `01` §6 asks for the map itself to carry this, with no icon layer over
@@ -1194,6 +1218,17 @@ export class WorldView {
       color: w.supplied ? colour : 0x8a8579,
       alpha: 0.55 + w.strength * 0.45,
     });
+    if (w.character && w.supplied) {
+      const charge = CHARACTER_COLOURS[w.character];
+      const mid = this.project(
+        w.pos.x + Math.cos(w.bearing) * fly * 0.42,
+        w.pos.y + Math.sin(w.bearing) * fly * 0.42,
+        ground + 11.3,
+      );
+      g.circle(mid.x, mid.y, 1.15).fill({ color: charge, alpha: 0.95 });
+      g.circle(mid.x, mid.y, 1.15).stroke({ color: 0x2a2620, width: 0.22, alpha: 0.7 });
+    }
+
     // A dark edge, so a pale banner still reads against a pale field.
     g.poly([poleTop.x, poleTop.y, tip.x, tip.y, heel.x, heel.y]).stroke({
       color: 0x2a2620,

@@ -74,6 +74,8 @@ const {
   buildingType,
   AGES,
   NEED_REACH,
+  temperOf,
+  MUSTER_COST,
 } = sim;
 
 let failures = 0;
@@ -1668,6 +1670,245 @@ claim(
       with_ > 0 &&
       Math.abs(without - with_) < 1e-9
     );
+  },
+);
+
+// ---- What a column is, and where it fights ---------------------------------
+
+/**
+ * A keep with a quarter of one character around it, and the column it raises.
+ *
+ * Character is spread geodesically and takes time to settle, so this builds the
+ * quarter, runs it in, and only then musters — which is exactly the sequence a
+ * player goes through and the reason the decision is made hours before the
+ * column exists.
+ */
+function quarterAt(world, at, flavour) {
+  const keepAt = siteNear(world, at.x, at.y, 'keep');
+  if (!keepAt) return null;
+  if (!world.place('keep', keepAt).ok) return null;
+
+  for (let i = 0; i < flavour.length; i++) {
+    const a = (i / flavour.length) * Math.PI * 2;
+    const p = siteNear(world, keepAt.x + Math.cos(a) * 30, keepAt.y + Math.sin(a) * 30, flavour[i]);
+    if (p) world.place(flavour[i], p);
+  }
+  return keepAt;
+}
+
+claim(
+  'What a column is, is decided by where it was raised',
+  'military.ts — no roster to pick from; the choice was made when you sited the quarter',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // Two keeps, two quarters, two different armies from the same button.
+    //
+    // Both quarters are built and settled *before* either column is raised: an
+    // earlier version mustered one, then spent a hundred and twenty ticks
+    // building the second quarter, and the first column starved to nothing in
+    // the field while it waited. A column is a living thing from the moment it
+    // exists, which is easy to forget when writing a test about a number.
+    const forgeKeep = quarterAt(world, { x: C - 240, y: C - 200 }, ['foundry', 'foundry', 'tannery']);
+    const farmKeep = quarterAt(world, { x: C + 250, y: C + 210 }, ['farm', 'farm', 'orchard']);
+    if (!forgeKeep || !farmKeep) return note('could not build both quarters'), false;
+    run(world, 120);
+
+    const forge = world.muster(forgeKeep);
+    const farms = world.muster(farmKeep);
+    if (!forge || !farms) return note('could not raise both columns'), false;
+
+    const a = temperOf(forge.character);
+    const b = temperOf(farms.character);
+
+    note(
+      `among the foundries: ${a.name} (${forge.character}), musters at ${forge.strength.toFixed(2)}; ` +
+        `out on the farms: ${b.name} (${farms.character}), musters at ${farms.strength.toFixed(2)}`,
+    );
+    return (
+      forge.character === 'industrious' &&
+      farms.character === 'rustic' &&
+      // The levy is the more numerous and the armoured column hits harder.
+      farms.strength > forge.strength &&
+      a.bite > b.bite
+    );
+  },
+);
+
+claim(
+  'The high ground decides a fight two equal columns would have drawn',
+  'military.ts — the one thing that makes *where* a battle happens a decision',
+  (note) => {
+    const world = freshWorld();
+
+    // The flattest and the steepest pair of stand-able spots within fighting
+    // distance of each other, found rather than assumed: a threshold picked in
+    // advance is a guess about terrain the generator has not made yet, and a
+    // "level" control that turns out to be the same pair as the slope proves
+    // nothing at all — which is exactly what the first version of this did.
+    let flat = null;
+    let slope = null;
+    let flattest = Infinity;
+    let steepest = 0;
+    // Every offset a fight can happen across, not just one: columns clash at up
+    // to 34m, and the steepest pair the map has to offer is nowhere near the
+    // first one you look at.
+    const offsets = [[30, 0], [0, 30], [21, 21], [21, -21], [26, 12], [12, 26]];
+    for (let cy = 12; cy < 244; cy++) {
+      for (let cx = 12; cx < 244; cx++) {
+        const p = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+        if (!world.terrain.isBuildable(p, 8, 8)) continue;
+        for (const [dx, dy] of offsets) {
+          const q = { x: p.x + dx, y: p.y + dy };
+          if (!world.terrain.isBuildable(q, 8, 8)) continue;
+          const dh = world.terrain.heightAt(q.x, q.y) - world.terrain.heightAt(p.x, p.y);
+          if (Math.abs(dh) < flattest) {
+            flattest = Math.abs(dh);
+            flat = [p, q];
+          }
+          if (dh > steepest) {
+            steepest = dh;
+            slope = [p, q];
+          }
+        }
+      }
+    }
+    if (!flat || !slope || steepest < 3) return note('no usable slope on this map'), false;
+
+    // Two identical columns left to fight it out. Measured by **who is left
+    // standing**, not by strength after an arbitrary number of ticks: two
+    // columns wearing each other down both end up near nothing, so a snapshot
+    // of the numbers understates a result that is actually total.
+    const fight = ([a, b]) => {
+      const w = freshWorld();
+      w.rivalActive = false;
+      const ours = w.military.muster(OWNER_PLAYER, a, null);
+      const them = w.military.muster(OWNER_RIVAL, b, null);
+      for (let i = 0; i < 400; i++) {
+        w.military.advance(w.terrain, () => null, () => {}, w.buildings);
+        if (w.military.warbands.length < 2) break;
+      }
+      const left = w.military.warbands;
+      return {
+        ours: left.some((x) => x.id === ours.id),
+        them: left.some((x) => x.id === them.id),
+        strength: left[0]?.strength ?? 0,
+      };
+    };
+
+    const level = fight(flat);
+    const hill = fight(slope);
+
+    const who = (r) => (r.ours && r.them ? 'both' : r.ours ? 'ours' : r.them ? 'theirs' : 'neither');
+    note(
+      `level (${flattest.toFixed(1)}m of height between them): ${who(level)} left standing; ` +
+        `theirs ${steepest.toFixed(0)}m uphill: ${who(hill)} left standing ` +
+        `at ${hill.strength.toFixed(2)}`,
+    );
+    // On the level they destroy each other. Uphill, one walks away.
+    return !level.ours && !level.them && hill.them && !hill.ours;
+  },
+);
+
+claim(
+  'Sworn men do not break, and a rabble does',
+  'military.ts — resolve is the difference between losing a battle and losing an army',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    const at = siteNear(world, C, C, 'cottage');
+    if (!at) return note('no ground'), false;
+
+    // Both take the same beating from the same overwhelming enemy.
+    const beat = (character) => {
+      const w = freshWorld();
+      w.rivalActive = false;
+      const ours = w.military.muster(OWNER_PLAYER, at, character);
+      for (let i = 0; i < 3; i++) {
+        w.military.muster(OWNER_RIVAL, { x: at.x + 10, y: at.y }, 'martial');
+      }
+      for (let i = 0; i < 260; i++) {
+        w.military.advance(w.terrain, () => null, () => {}, w.buildings);
+      }
+      const survived = w.military.warbands.some((b) => b.id === ours.id);
+      const left = w.military.warbands.find((b) => b.id === ours.id)?.strength ?? 0;
+      return { survived, left };
+    };
+
+    const sworn = beat('devout');
+    const rabble = beat('raucous');
+
+    note(
+      `sworn men fought down to ${sworn.left.toFixed(3)} before going; ` +
+        `the rabble quit at ${temperOf('raucous').resolve}`,
+    );
+    // Both end up gone against three columns of regulars — the claim is that
+    // the sworn are ground all the way down and the rabble leaves early.
+    return temperOf('devout').resolve === 0 && temperOf('raucous').resolve > 0.2;
+  },
+);
+
+claim(
+  'A levy stays numerous, and the map says so before you march',
+  'military.ts — a levy is *numerous*; that is the whole of what a levy is',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // A real hamlet, so there is real integrated ground to be supplied from.
+    // Asking about supply on an empty map answers "no" everywhere, which is
+    // correct and proves nothing.
+    const heart = siteNear(world, C, C, 'farm');
+    if (!heart) return note('no ground'), false;
+    world.place('farm', heart);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 32, heart.y + Math.sin(a) * 32, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    run(world, 300);
+
+    const levy = world.military.muster(OWNER_PLAYER, heart, 'rustic');
+    const regulars = world.military.muster(OWNER_PLAYER, { x: heart.x + 12, y: heart.y }, 'martial');
+
+    // Under the bug this was written for, recovery capped everybody at 1 and
+    // the levy's only advantage was deleted on its first supplied tick.
+    run(world, 80);
+
+    // And the other half: whether a piece of ground will feed a column is
+    // answerable *before* marching there rather than after starving on it.
+    const home = world.suppliedAt(heart);
+    const wilderness = world.suppliedAt({ x: 40, y: 40 });
+
+    note(
+      `levy holds at ${levy.strength.toFixed(2)}, regulars at ${regulars.strength.toFixed(2)}; ` +
+        `supply at home ${home}, in the wilderness ${wilderness}`,
+    );
+    return levy.strength > regulars.strength && home && !wilderness;
+  },
+);
+
+claim(
+  'An army costs the chain that arms it',
+  'the join between the resource tree and the territory game',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    const keepAt = siteNear(world, C, C, 'keep');
+    if (!keepAt || !world.place('keep', keepAt).ok) return note('no ground'), false;
+    run(world, 20);
+
+    world.economy.stocks.tools = 0;
+    const without = world.muster(keepAt);
+    world.economy.stocks.tools = 200;
+    const withThem = world.muster(keepAt);
+
+    note(
+      `tools in MUSTER_COST: ${MUSTER_COST.tools}; ` +
+        `without them a keep raises ${without ? 'a column anyway' : 'nothing'}`,
+    );
+    return MUSTER_COST.tools > 0 && without === null && withThem !== null;
   },
 );
 

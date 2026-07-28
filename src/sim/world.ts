@@ -9,7 +9,7 @@ import { Conductance, openGround } from './conductance';
 import { Territory } from './territory';
 import { Calendar, type Season } from './calendar';
 import { Rival } from './rival';
-import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military';
+import { Military, MUSTER_COOLDOWN, MUSTER_COST, temperOf, type Warband } from './military';
 import { Chronicle } from './chronicle';
 import { Labour, LABOUR_INTERVAL } from './labour';
 import { Populace } from './populace';
@@ -587,17 +587,23 @@ export class World {
       },
       this.buildings,
       (band, starved) => {
+        // Named by what it was, because "a levy broke" and "sworn men were cut
+        // down to the last" are different events and the chronicle is the only
+        // place the difference is ever written down.
+        const what = temperOf(band.character).name.toLowerCase();
         if (band.owner === OWNER_PLAYER) {
           this.chronicle.record(
             'war',
             starved
-              ? 'A warband starved in the field. It was too far from anything we had made ours.'
-              : 'A warband was broken.',
+              ? `${temperOf(band.character).name} starved in the field, too far from anything we had made ours.`
+              : temperOf(band.character).resolve === 0
+                ? `${temperOf(band.character).name} were cut down where they stood. They did not break.`
+                : `${temperOf(band.character).name} broke and went home.`,
             this.now,
             200,
           );
         } else {
-          this.chronicle.record('war', 'A rival column was broken.', this.now, 200);
+          this.chronicle.record('war', `A rival column — ${what} — was broken.`, this.now, 200);
         }
       },
     );
@@ -725,15 +731,88 @@ export class World {
     }
 
     this.musterReady.set(keep.id, MUSTER_COOLDOWN);
+
+    // **What a column is, is decided by where it was raised.**
+    const character = this.characterAround(keep.pos);
+    const temper = temperOf(character);
+
     if (owner === OWNER_PLAYER) {
-      this.chronicle.record('war', 'A warband mustered at the keep.', this.now, 300);
+      const where = this.quarters.at(keep.pos.x, keep.pos.y);
+      this.chronicle.record(
+        'war',
+        where
+          ? `${temper.name} mustered at ${where.name}.`
+          : `${temper.name} mustered at the keep.`,
+        this.now,
+        300,
+      );
     }
+
     // Raised at the gate rather than inside the walls, so it is visible.
     const type = buildingType(keep.typeId);
-    return this.military.muster(owner, {
-      x: keep.pos.x + Math.cos(keep.rotation) * (type.width / 2 + 8),
-      y: keep.pos.y + Math.sin(keep.rotation) * (type.depth / 2 + 8),
-    });
+    return this.military.muster(
+      owner,
+      {
+        x: keep.pos.x + Math.cos(keep.rotation) * (type.width / 2 + 8),
+        y: keep.pos.y + Math.sin(keep.rotation) * (type.depth / 2 + 8),
+      },
+      character,
+    );
+  }
+
+  /**
+   * What kind of place this is, *not counting the fortifications*.
+   *
+   * The obvious implementation — read the character field at the keep — is
+   * wrong, and the trial caught it in one run: a keep emits `martial` at 1.8
+   * over 140 metres, so it drowns out whatever it is standing in and **every
+   * column comes out as regulars, everywhere, always**. The building would have
+   * been reading its own presence and calling it the character of the town.
+   *
+   * This is the third time the same mistake has been caught in this codebase, in
+   * three different systems: the rival fortifying because a watchtower made the
+   * ground feel martial, a keep's own contour counting as ground its owner had
+   * integrated, and now this. The rule is worth stating once:
+   *
+   * > **A fortification never reads its own presence as the character of the
+   * > place it is standing in.**
+   *
+   * So the tally is taken from the buildings around it, military excluded —
+   * which is also the more honest question. A garrison quarter is martial
+   * because of the barrack rows and the watchtowers *around* the keep, and if
+   * there are none then the keep is a lone tower in a field of wheat and it
+   * raises farmers, which is correct.
+   */
+  private characterAround(at: Vec2, radius = 150): Character | null {
+    const tally = new Float64Array(CHARACTER_COUNT);
+    let total = 0;
+
+    for (const b of this.buildings) {
+      if (b.owner !== OWNER_PLAYER) continue;
+      const type = buildingType(b.typeId);
+      if (type.family === 'military') continue;
+      const d = Math.hypot(b.pos.x - at.x, b.pos.y - at.y);
+      if (d > radius) continue;
+      const near = 1 - d / radius;
+      for (const e of type.emissions) {
+        tally[characterIndex(e.character)] += e.strength * near;
+        total += e.strength * near;
+      }
+    }
+
+    if (total <= 0.001) return null;
+
+    let best = -1;
+    let bestValue = 0;
+    for (let c = 0; c < CHARACTER_COUNT; c++) {
+      if (tally[c] > bestValue) {
+        bestValue = tally[c];
+        best = c;
+      }
+    }
+    // The same bar the rest of the game uses for "this place is clearly one
+    // thing". Muddled ground raises a plain warband, which is the right answer.
+    return best >= 0 && bestValue / total >= COHERENCE_THRESHOLD ? CHARACTERS[best] : null;
   }
 
   /**
@@ -892,6 +971,11 @@ export class World {
     }
 
     return out;
+  }
+
+  /** Whether a column of this owner would be fed on that ground. */
+  suppliedAt(at: Vec2, owner = OWNER_PLAYER): boolean {
+    return this.military.suppliedAt(at, owner, (wx, wy) => this.territory.integratedAt(wx, wy));
   }
 
   /** Send a column somewhere, routed over the current cost field. */
