@@ -805,7 +805,7 @@ async function main(): Promise<void> {
       townEvery = now;
       const stats = world.field.townCoherence();
       rRender.textContent = `${renderMs.toFixed(2)} ms`;
-      const terr = world.territory.stats(world.buildings, world.field);
+      const terr = world.territory.stats(world.buildings, world.field, world.vitality);
       const pct = (v: number) => Math.round(v * 100);
       rTerritory.textContent = `${terr.cells[0]} v ${terr.cells[1]}`;
       rTerrDetail.textContent =

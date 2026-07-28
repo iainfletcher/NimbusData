@@ -74,6 +74,12 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Market stalls, open-field strips, livestock
 
 - Cultural pressure and a living border between rival settlements
+- **Culture that comes from how well the town is run**, not only from how it is
+  laid out: housing that has grown, works that are staffed and fed, households
+  that can walk to what they need, a town that is not going hungry, and quarters
+  that have stood a long time. Two identical hamlets at *the same coherence*
+  differ by 66% in what they project — so a well is territory, and letting a
+  quarter rot loses you ground without any decay system existing
 
 - Planned fabric: crescent, square and grid layouts, rotatable, priced in stone
 - A resource layer produced from what the surrounding land actually holds
@@ -171,9 +177,9 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
   is identical — but an unstaffed works is now legible as an *empty road to it*,
   and an empty town has empty streets
 
-**Not yet built:** planned-fabric amplification (`design/05` §3); broadening
-cultural output beyond coherence (`design/01` §8); anything beyond the medieval
-era — though the four ages inside it are the arc that era progression will hang
+**Not yet built:** planned-fabric amplification (`design/05` §3); occasional
+cultural spikes — festivals, monuments (`design/01` §2); anything beyond the
+medieval era — though the four ages inside it are the arc that era progression will hang
 on (`design/03` §6).
 
 Hover any building to read how it is doing in words — *Foundry · half fed ·

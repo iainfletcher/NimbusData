@@ -60,6 +60,40 @@ export type Standing = 'open' | 'held' | 'integrated' | 'contested';
  * district-scale character field.
  */
 const REACH_PER_OUTPUT = 128;
+
+/**
+ * How steeply coherence is applied.
+ *
+ * Was 1.6, chosen in §8 to force a separation the model would not produce on its
+ * own. Now that condition carries a real share, the arithmetic can stop doing so
+ * much of the work — which is the whole point of §8's closing recommendation.
+ */
+const COHERENCE_POWER = 1.35;
+
+/**
+ * What an old place is worth, and how long it takes to be old.
+ *
+ * `2500` ticks is a few years at this clock — long enough that age is something
+ * a town *acquires* rather than something it has, and short enough that a
+ * founding quarter is meaningfully venerable by the time the borough exists.
+ */
+const AGE_WORTH = 0.55;
+const AGE_SETTLES = 2500;
+
+/**
+ * How much of a building's output depends on how well the place is run.
+ *
+ * The floor is what a completely neglected building still radiates — it is
+ * standing there, after all — and the lift is what a thriving one gains over a
+ * merely adequate one. Together they give a swing of about three to one, which
+ * is the same order as the coherence term. That parity is deliberate: `01` §8
+ * asked for the load to be *shared*, not moved.
+ */
+const CONDITION_FLOOR = 0.34;
+const CONDITION_LIFT = 0.16;
+const VIGOUR_SHARE = 0.45;
+const COMFORT_SHARE = 0.37;
+const PLENTY_SHARE = 0.18;
 const MAX_REACH = 420;
 
 /**
@@ -136,12 +170,13 @@ export class Territory {
     conductance: Conductance,
     steps = 1,
     military: Military | null = null,
+    life: Vitality = THRIVING,
   ): void {
     this.military = military;
     for (const layer of this.pressure) layer.fill(0);
 
     for (const b of buildings) {
-      const output = culturalOutput(b, field);
+      const output = culturalOutput(b, field, life);
       if (output <= 0) continue;
 
       const cx = Math.floor(b.pos.x / CELL_SIZE);
@@ -258,7 +293,11 @@ export class Territory {
     return this.standingAtCell(Math.floor(wx / CELL_SIZE), Math.floor(wy / CELL_SIZE));
   }
 
-  stats(buildings?: readonly Building[], field?: CharacterField): TerritoryStats {
+  stats(
+    buildings?: readonly Building[],
+    field?: CharacterField,
+    life: Vitality = THRIVING,
+  ): TerritoryStats {
     const cells = new Array(OWNER_COUNT).fill(0);
     const held = new Array(OWNER_COUNT).fill(0);
     const coherence = new Array(OWNER_COUNT).fill(0);
@@ -271,7 +310,7 @@ export class Territory {
         const owner = b.owner ?? OWNER_PLAYER;
         const reading = field.read(b.pos.x, b.pos.y);
         coherence[owner] += reading.dominant ? reading.coherence : 0;
-        output[owner] += culturalOutput(b, field);
+        output[owner] += culturalOutput(b, field, life);
         counts[owner]++;
       }
       for (let o = 0; o < OWNER_COUNT; o++) {
@@ -300,14 +339,53 @@ export class Territory {
 }
 
 /**
+ * How the town is actually doing, building by building.
+ *
+ * `01` §2 lists five things that should radiate culture — prosperity, quality,
+ * age, amenity, and the occasional spike — and until now **only coherence was
+ * implemented**, with age as a rounding error. §8 measured the consequence and
+ * said so plainly: a well-ordered town beat a deliberately jumbled one by only a
+ * fifth, and the gap had to be *tuned* into existence with an exponent rather
+ * than emerging from the model. It closed with the obvious conclusion — "if
+ * coherence alone barely separates towns, it probably should not carry the whole
+ * load".
+ *
+ * This is the interface that lets it stop. Implemented by the world, which is
+ * the only thing that can see labour, supply, needs and the barn at once;
+ * declared here so the territory layer depends on the *question* rather than on
+ * the machinery that answers it.
+ */
+export interface Vitality {
+  /** Is this building doing the thing it exists to do, 0..1. */
+  vigourOf(b: Building): number;
+  /** How well a household here is served, 0..1. One for anything else. */
+  comfortOf(b: Building): number;
+  /** Is the town fed, 0..1. The one honestly town-wide term. */
+  readonly plenty: number;
+}
+
+/** Everything is in fine condition until something says otherwise. */
+const THRIVING: Vitality = { vigourOf: () => 1, comfortOf: () => 1, plenty: 1 };
+
+/**
  * What a building radiates.
  *
- * Coherence is the multiplier, which is the whole design in one line: a quarter
- * that is unmistakably *something* projects, and a muddle projects nothing no
- * matter how much stands in it. Age contributes because an established place
- * carries more weight than a new one (design/04's Antique, in embryo).
+ * Two halves, and the split is the point.
+ *
+ * **Clarity** — is this quarter unmistakably *something*? That is the original
+ * thesis and it still leads. But it no longer carries the whole load, so the
+ * exponent that was propping it up has come down from 1.6 to 1.35: less of the
+ * separation is now arithmetic and more of it is the town.
+ *
+ * **Condition** — is this place any *good*? A works nobody staffs, a foundry
+ * with no ore reaching it, a cottage that never grew because it cannot reach a
+ * well: all of them stand there looking like a town and radiating a third of
+ * what a thriving one does. This is `00` Pillar B's promise cashed out at last —
+ * *"let a district rot and you don't just lose the district, you lose ground"* —
+ * and it needed no decay system to do it, because the game already refuses to
+ * let an unserved house grow.
  */
-function culturalOutput(b: Building, field: CharacterField): number {
+function culturalOutput(b: Building, field: CharacterField, life: Vitality): number {
   const type = buildingType(b.typeId);
   const reading = field.read(b.pos.x, b.pos.y);
   if (!reading.dominant) return 0;
@@ -321,10 +399,7 @@ function culturalOutput(b: Building, field: CharacterField): number {
   // everything clears the threshold. For "unmistakably something" to be worth
   // anything, the response has to punish the middle of the range.
   const above = (reading.coherence - COHERENCE_THRESHOLD) / (1 - COHERENCE_THRESHOLD);
-  // Squaring proved too much — it gave a six-to-one rout for a nine-point
-  // coherence gap, and shrank everyone's reach so far that most of the map went
-  // unclaimed. 1.6 keeps a clear advantage without annihilating the loser.
-  const clarity = above <= 0 ? Math.max(0, reading.coherence) * 0.12 : above ** 1.6;
+  const clarity = above <= 0 ? Math.max(0, reading.coherence) * 0.12 : above ** COHERENCE_POWER;
 
   const base =
     type.family === 'civic'
@@ -342,8 +417,16 @@ function culturalOutput(b: Building, field: CharacterField): number {
   const landmark =
     type.id === 'church' || type.id === 'market' || type.id === 'keep' ? 1.7 : 1;
 
-  // Standing a long while counts for something.
-  const age = Math.min(1.35, 1 + b.age / 4000);
+  // Standing a long while counts for something, and now it counts for rather
+  // more: this is Pillar E's promise that the city's memory is worth territory,
+  // and at a cap of 1.35 over four thousand ticks it was worth almost nothing.
+  const age = 1 + AGE_WORTH * (1 - Math.exp(-b.age / AGE_SETTLES));
 
-  return base * landmark * clarity * age;
+  const blend =
+    VIGOUR_SHARE * life.vigourOf(b) +
+    COMFORT_SHARE * life.comfortOf(b) +
+    PLENTY_SHARE * life.plenty;
+  const condition = CONDITION_FLOOR + (1 - CONDITION_FLOOR + CONDITION_LIFT) * blend;
+
+  return base * landmark * clarity * age * condition;
 }

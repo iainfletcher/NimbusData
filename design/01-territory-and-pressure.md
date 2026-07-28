@@ -250,6 +250,9 @@ it probably should not carry the whole load. Age (§Antique), size, and amenity
 mix are all candidates to share it, and would each be more robust than a
 quantity that saturates as easily as this one does.
 
+> **This recommendation has now been taken. See §12 — and the exponent this
+> section installed has come *down*, not up, while the separation got wider.**
+
 ## 9. First thing to prototype
 
 The smallest build that tests the core claim: **one map, two settlements, both
@@ -457,8 +460,95 @@ advantage on its first supplied tick. Capped at what the column musters at now.
 - **The rival's soldiers are not clever.** It musters on a fixed clock and marches
   at whatever of yours is nearest. Deliberate: a cleverer opponent would make a
   moving border tell you about the AI rather than about your town.
-- **§8's warning still stands.** Coherence carries almost the whole cultural load,
-  and it is a weak discriminator. Age, size and amenity mix should share it. The
-  military half does not fix that and was never going to.
+- ~~**§8's warning still stands.**~~ Taken, and closed: see §12. Coherence now
+  shares the load with vigour, comfort, plenty and a much stronger age term.
 - **No human has played this.** Everything above is measurement and judgement.
 
+---
+
+## 12. Built — culture stops being coherence with extra steps
+
+§8 closed by saying coherence should not carry the whole load. It had been
+carrying it for six months, with age as a rounding error worth at most a 35%
+bonus over four thousand ticks, and the separation between a good town and a bad
+one *tuned into existence* by an exponent rather than produced by the model. §2
+had listed the other sources from the beginning — prosperity, quality, age,
+amenity, plenty — and none of them was implemented.
+
+What a building radiates is now two halves:
+
+**Clarity** — is this quarter unmistakably *something*? The original thesis, and
+it still leads.
+
+**Condition** — is this place any *good*? Three terms, each of which is a thing
+the player did or failed to do:
+
+| Term | Reads | Where it comes from |
+|---|---|---|
+| **Vigour** | Has this housing *grown*? Is this works staffed and fed? | `labour`, `supply`, evolution state |
+| **Comfort** | Can this household walk to water, a church, a market, an alehouse? | `needs` |
+| **Plenty** | Is the town fed? Are people leaving? | `economy`, `populace` |
+
+Together they swing a building's output by about three to one, which is the same
+order as the coherence term — deliberately, because §8 asked for the load to be
+*shared*, not moved.
+
+### The measurement, and it is better than §8's in every respect
+
+Two towns, same seed, same buildings, same layout. One gets a well so its
+housing can grow and its households are served; the other gets nothing.
+**Coherence is 100% in both** — they are the same rustic hamlet — so coherence
+cannot be what separates them:
+
+| | Houses grown | Output | Territory |
+|---|---|---|---|
+| Served | 12 | 6.8 | 1,155 |
+| Neglected | 1 | 4.1 | 702 |
+
+A 66% output gap and 64% more ground **at identical coherence**. That is the
+thing §8 said was missing, and it is now the answer to a question the player can
+act on: *a well is territory.*
+
+### And §8's own experiment, re-run — with a gentler exponent
+
+Softening the coherence power from 1.6 to 1.35 should, by §8's reasoning, have
+weakened the pillar. It did the opposite:
+
+| | Coherence | Output | Territory |
+|---|---|---|---|
+| Ordered town | 83% | 15.1 | 4,103 |
+| Jumbled town | 67% | 8.7 | 2,812 |
+
+Compare §8's original: 18 against 15 (a fifth) with a linear response, and a
+six-to-one rout when squared. **Now 74% more output and 46% more ground, with
+less arithmetic doing the work than before.**
+
+The reason is the interesting part, and it was not designed:
+
+> **Incoherence now costs you twice.** Once directly, through clarity — and
+> again because housing only evolves on ground whose character is clear, so a
+> jumbled quarter's cottages never grow, and never growing is exactly what
+> vigour measures.
+
+Two systems built years apart in this codebase, for unrelated reasons, turn out
+to reinforce each other through a term neither of them knows about. That is the
+emergence §8 correctly complained was absent — and it arrived by *removing* a
+tuning constant rather than adding one.
+
+### What this closes
+
+- `00` Pillar B's promise — *"let a district rot and you don't just lose the
+  district, you lose ground"* — is true, and it needed **no decay system** to
+  become true. The game already refuses to let an unserved house grow; wiring
+  that to territory was the whole of it.
+- Pillar E's promise that the city's memory is worth territory is now worth
+  something measurable: the same chapel radiates 1.17 when new and 1.74 after
+  six thousand ticks.
+- The civic buildings have a third reason to exist. They served households
+  (`needs`), they let the town grow up (`ages`), and now they hold the frontier.
+
+### Still not built from §2's list
+
+**Occasional spikes** — festivals, a completed monument. Nothing in the game
+produces an event of that shape yet, and inventing one to fill the row would be
+the bolted-on system §2 spends its first paragraph refusing.

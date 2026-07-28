@@ -1912,6 +1912,205 @@ claim(
   },
 );
 
+// ---- Culture is more than coherence (design/01 §8) --------------------------
+
+claim(
+  'Two identical towns, one run well and one neglected, do not radiate the same',
+  'design/01 §8 — "if coherence alone barely separates towns, it should not carry the whole load"',
+  (note) => {
+    // The same buildings, the same layout, the same seed. One gets a well and a
+    // chapel so its housing can grow and its households are served; the other
+    // gets nothing. Coherence is near-identical in both — they are the same
+    // rustic hamlet — so anything that separates them is the new half.
+    const town = (looked) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+      world.ages.index = 0;
+
+      const heart = drySiteNear(world, C, C, 'farm');
+      if (!heart) return null;
+      world.place('farm', heart);
+      for (let ring = 0; ring < 2; ring++) {
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + ring * 0.5;
+          const r = 30 + ring * 24;
+          const p = siteNear(world, heart.x + Math.cos(a) * r, heart.y + Math.sin(a) * r, 'cottage');
+          if (p) world.place('cottage', p);
+        }
+      }
+      if (looked) {
+        const w = siteNear(world, heart.x + 18, heart.y + 14, 'well');
+        if (w) world.place('well', w);
+      }
+      run(world, 700);
+
+      const stats = world.territory.stats(world.buildings, world.field, world.vitality);
+      const grown = world.buildings.filter((b) => buildingType(b.typeId).isEvolved).length;
+      return {
+        cells: stats.cells[OWNER_PLAYER],
+        output: stats.output[OWNER_PLAYER],
+        coherence: stats.coherence[OWNER_PLAYER],
+        grown,
+      };
+    };
+
+    const kept = town(true);
+    const left = town(false);
+    if (!kept || !left) return note('could not build both towns'), false;
+
+    note(
+      `served: ${kept.grown} houses grown, output ${kept.output.toFixed(1)}, ` +
+        `${kept.cells} cells at ${Math.round(kept.coherence * 100)}% coherence · ` +
+        `neglected: ${left.grown} grown, output ${left.output.toFixed(1)}, ` +
+        `${left.cells} cells at ${Math.round(left.coherence * 100)}%`,
+    );
+    // Near-identical coherence, and a real gap in what they project anyway —
+    // which is the whole of what §8 said was missing.
+    return (
+      Math.abs(kept.coherence - left.coherence) < 0.08 &&
+      kept.output > left.output * 1.2 &&
+      kept.cells > left.cells
+    );
+  },
+);
+
+claim(
+  'An ordered town still beats a jumbled one of the same size',
+  'design/01 §8 — the lead pillar, re-run after softening the exponent that propped it up',
+  (note) => {
+    // §8's original experiment, now that coherence no longer carries the whole
+    // load and its exponent has come down from 1.6 to 1.35. If the pillar only
+    // stood up because of the arithmetic, this is where it falls over.
+    const kinds = [
+      ['sawmill', 'workshop', 'tannery', 'quarry'],   // industrious
+      ['chapel', 'almshouse', 'chapel', 'almshouse'], // devout
+      ['farm', 'orchard', 'watermill', 'farm'],       // rustic
+      ['warehouse', 'guildhall', 'warehouse', 'tavern'], // mercantile
+    ];
+
+    const build = (ordered) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+
+      // Ordered: each character gets its own quarter. Jumbled: the same
+      // buildings, dealt round-robin so every quarter is a mixture.
+      const spots = [
+        { x: C - 110, y: C - 110 }, { x: C + 110, y: C - 110 },
+        { x: C - 110, y: C + 110 }, { x: C + 110, y: C + 110 },
+      ];
+      let n = 0;
+      for (let q = 0; q < 4; q++) {
+        for (let i = 0; i < 4; i++) {
+          const typeId = ordered ? kinds[q][i] : kinds[(q + i) % 4][i];
+          const a = (i / 4) * Math.PI * 2 + q;
+          const p = siteNear(world, spots[q].x + Math.cos(a) * 34, spots[q].y + Math.sin(a) * 34, typeId);
+          if (p && world.place(typeId, p).ok) n++;
+          // A cottage each, so both towns have the same housing.
+          const h = siteNear(world, spots[q].x + Math.cos(a + 0.5) * 56, spots[q].y + Math.sin(a + 0.5) * 56, 'cottage');
+          if (h) world.place('cottage', h);
+        }
+      }
+      run(world, 500);
+      const stats = world.territory.stats(world.buildings, world.field, world.vitality);
+      return {
+        n,
+        cells: stats.cells[OWNER_PLAYER],
+        output: stats.output[OWNER_PLAYER],
+        coherence: stats.coherence[OWNER_PLAYER],
+      };
+    };
+
+    const tidy = build(true);
+    const mess = build(false);
+
+    note(
+      `ordered: ${Math.round(tidy.coherence * 100)}% coherence, output ${tidy.output.toFixed(1)}, ${tidy.cells} cells · ` +
+        `jumbled: ${Math.round(mess.coherence * 100)}%, output ${mess.output.toFixed(1)}, ${mess.cells} cells`,
+    );
+    return tidy.coherence > mess.coherence && tidy.cells > mess.cells * 1.1;
+  },
+);
+
+claim(
+  'A works nobody staffs radiates less than the same works working',
+  'design/01 §2 — "prosperity: goods actually flowing, people actually fed"',
+  (note) => {
+    const measure = (withHands) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+
+      let best = null;
+      let bestValue = 0;
+      for (let cy = 8; cy < 248; cy += 4) {
+        for (let cx = 8; cx < 248; cx += 4) {
+          const v = world.land.timber[cy * 256 + cx];
+          if (v > bestValue) {
+            bestValue = v;
+            best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+          }
+        }
+      }
+      const at = siteNear(world, best.x, best.y, 'sawmill');
+      if (!at || !world.place('sawmill', at).ok) return null;
+      // A second mill, so the quarter is unmistakably industrious either way.
+      const two = siteNear(world, at.x + 40, at.y + 20, 'workshop');
+      if (two) world.place('workshop', two);
+
+      if (withHands) {
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const p = siteNear(world, at.x + Math.cos(a) * 46, at.y + Math.sin(a) * 46, 'cottage');
+          if (p) world.place('cottage', p);
+        }
+        serveNeeds(world, at);
+      }
+      run(world, 400);
+
+      const mill = world.buildings.find((b) => b.typeId === 'sawmill');
+      const stats = world.territory.stats(world.buildings, world.field, world.vitality);
+      return {
+        vigour: world.vitality.vigourOf(mill),
+        output: stats.output[OWNER_PLAYER],
+      };
+    };
+
+    // The idle arm has no housing at all, so it also has no houses adding
+    // output. Compare the *mill's own* vigour, and the town output as support.
+    const idle = measure(false);
+    const busy = measure(true);
+    if (!idle || !busy) return null;
+
+    note(
+      `unstaffed mill radiates at vigour ${idle.vigour.toFixed(2)}; ` +
+        `staffed, ${busy.vigour.toFixed(2)}`,
+    );
+    return idle.vigour < 0.1 && busy.vigour > idle.vigour + 0.2;
+  },
+);
+
+claim(
+  'An old quarter is worth more ground than a new one',
+  'design/01 §2 and Pillar E — the city remembers, and its memory is worth territory',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    const at = siteNear(world, C, C, 'chapel');
+    if (!at || !world.place('chapel', at).ok) return note('no ground'), false;
+    const b = world.buildings[0];
+    const life = world.vitality;
+
+    // Same building, same ground, same everything — only older.
+    run(world, 30);
+    const young = world.territory.stats(world.buildings, world.field, life).output[OWNER_PLAYER];
+    run(world, 6000);
+    const old = world.territory.stats(world.buildings, world.field, life).output[OWNER_PLAYER];
+
+    note(`the same chapel radiates ${young.toFixed(2)} new and ${old.toFixed(2)} after ${b.age} ticks`);
+    return old > young * 1.25;
+  },
+);
+
 console.log('');
 if (failures > 0) {
   console.log(`${failures} trial(s) did not hold.\n`);

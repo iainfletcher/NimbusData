@@ -6,7 +6,7 @@ import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type Roa
 import { emptyDecor, generateDecor, type Decor } from './decor';
 import { Crowd, crowdPlan, type Journey } from './people';
 import { Conductance, openGround } from './conductance';
-import { Territory } from './territory';
+import { Territory, type Vitality } from './territory';
 import { Calendar, type Season } from './calendar';
 import { Rival } from './rival';
 import { Military, MUSTER_COOLDOWN, MUSTER_COST, temperOf, type Warband } from './military';
@@ -675,6 +675,7 @@ export class World {
         this.useFlow ? this.conductance : openGround(),
         TERRITORY_INTERVAL,
         this.military,
+        this.vitality,
       );
       this.driftBuildings(TERRITORY_INTERVAL);
     }
@@ -971,6 +972,51 @@ export class World {
     }
 
     return out;
+  }
+
+  /**
+   * How well the town is running, building by building, for the culture it
+   * radiates (`territory.ts` — `Vitality`).
+   *
+   * This is where `01` §2's list of what emits cultural pressure — prosperity,
+   * quality, amenity, plenty — stops being a list and starts being the answer
+   * to a question the territory layer asks every twelve ticks. The world is the
+   * only object that can see labour, supply, needs and the barn at once, so it
+   * is the only one that can answer.
+   */
+  get vitality(): Vitality {
+    return {
+      vigourOf: (b) => {
+        const type = buildingType(b.typeId);
+
+        // Housing: **has it grown?** A quarter of plain cottages is a place
+        // that has not become anything, and because evolution is gated on
+        // service, an unserved quarter *cannot* become anything — which is the
+        // rot loop `01` §2 asks for, with no decay system needed to produce it.
+        if (type.houses) return type.isEvolved ? 1 : 0.5;
+
+        // A works: is it working? Staffing and feed are the two things that
+        // stop one, and a building standing idle radiates no prosperity.
+        let v = 1;
+        if (type.jobs) v *= this.labour.staffingOf(b);
+        if (type.consumes) v *= this.supply.feedOf(b);
+        return Math.max(0, Math.min(1, v));
+      },
+
+      // Amenity, from the household's side: a house that can walk to water, a
+      // church, a market and an alehouse is a good place to live, and a good
+      // place to live is what converts ground.
+      comfortOf: (b) => (buildingType(b.typeId).houses ? this.needs.servedOf(b) : 1),
+
+      // People actually fed. A town going hungry is not radiating anything, and
+      // one people are walking out of is radiating rather less than one they
+      // are walking into.
+      plenty: this.economy.hungry
+        ? 0.45
+        : this.populace.report.blocked === 'leaving'
+          ? 0.7
+          : 1,
+    };
   }
 
   /** Whether a column of this owner would be fed on that ground. */
