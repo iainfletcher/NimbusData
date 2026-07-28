@@ -3,42 +3,49 @@ import { harvestable, type Land } from './land';
 import type { Labour } from './labour';
 import { garrisonUpkeep, WARBAND_UPKEEP } from './military';
 import type { Terrain } from './terrain';
-import { OWNER_PLAYER, type Building } from './types';
+import { OWNER_PLAYER, RESOURCE_KINDS, type Building, type Resource } from './types';
+import type { Supply } from './supply';
 import type { SeasonEffects } from './calendar';
 import type { Standing } from './territory';
 
 /**
- * A deliberately light resource layer (design/00, Axis 3).
+ * What the town produces and what it keeps (design/00, Axis 3).
  *
- * Three stocks, no transport, no ratios, no sliders. What makes it a *game*
- * rather than bookkeeping is that production is **spatial**: a sawmill yields
- * what the wood around it holds, a quarry what the slope around it holds, a farm
- * what the flat ground around it holds. So the only lever is *where you put
- * things*, which is exactly the kind of decision `00` argues for and exactly the
- * kind it argues against having to compute.
+ * No transport, no ratios, no sliders. What makes it a *game* rather than
+ * bookkeeping is that production is **spatial**, and it is spatial in two
+ * different ways now:
  *
- * Self-throttling falls out of catchment: two mills in one wood share it, so a
- * second is wasteful without being broken, and nobody has to work out the
- * correct number of mills. You can see the wood, and you can see the idle mill.
+ * - A **harvesting** works yields what the ground around it holds. A sawmill
+ *   yields its wood, a quarry its slope, a farm its flat ground.
+ * - A **converting** works yields what its *neighbours* can feed it
+ *   (`supply.ts`). A foundry with no mine in reach smelts nothing, however much
+ *   ore is in the barn.
+ *
+ * So the only lever is where you put things, which is exactly the kind of
+ * decision `00` argues for and exactly the kind it argues against having to
+ * compute. Every yield is one product:
+ *
+ * > **ground × standing × staffing × feed**
+ *
+ * Self-throttling falls out of both halves. Two mills in one wood share it; two
+ * foundries on one mine halve each other; and what a foundry draws off a mill
+ * never reaches the barn. A second of anything is wasteful without being
+ * broken, and nobody works out a correct ratio — you look at the map.
  */
 
-export type Resource = 'timber' | 'stone' | 'food' | 'iron';
+export type { Resource };
 
-export interface Stocks {
-  timber: number;
-  stone: number;
-  food: number;
-  /**
-   * Smelted from ore, and the only thing fortification is built out of.
-   *
-   * Timber, stone and food are everywhere in some quantity; **ore is not**. It
-   * sits in a few seams, so iron is the resource you can be denied — and since
-   * walls and keeps are the only things that need it, a scarce seam on a
-   * frontier is worth a war. That is the join between the resource game and the
-   * territory game, and it is one line of catalogue data rather than a system.
-   */
-  iron: number;
-}
+/**
+ * The town's stores.
+ *
+ * Four raw and two made. **Ore** sits in a few scarce seams, which is what makes
+ * the metal chain the one you can be denied: a foundry with no seam in reach
+ * cannot smelt, so a frontier seam is worth a war. **Iron** is what fortification
+ * is built from and **tools** are what the landmarks are — a church, a market
+ * cross, a guildhall and a keep all want them — so the two made goods are the
+ * join between the resource game, the territory game and the era arc.
+ */
+export type Stocks = Record<Resource, number>;
 
 /** What it costs to put a building up. */
 export type Cost = Partial<Stocks>;
@@ -46,11 +53,20 @@ export type Cost = Partial<Stocks>;
 /** How far a producer reaches for its raw material, in metres. */
 export const CATCHMENT = 120;
 
-/** Scale factors turning raw potential into a sane rate per tick. */
-const TIMBER_RATE = 0.0022;
-const STONE_RATE = 0.0026;
-const FOOD_RATE = 0.0062;
-const IRON_RATE = 0.0034;
+/**
+ * Which land field a harvesting works draws on.
+ *
+ * The scale factors that used to live here are on the catalogue entries now,
+ * beside the thing they scale — a works says what ground it takes and what comes
+ * out of it, and the economy no longer needs a switch statement naming every
+ * building in the game.
+ */
+const HARVEST_FIELD = {
+  timber: 'timber',
+  stone: 'stone',
+  arable: 'arable',
+  ore: 'ore',
+} as const;
 
 /**
  * One person eats this much per tick.
@@ -80,9 +96,13 @@ export interface Standings {
 }
 
 export class Economy {
-  readonly stocks: Stocks = { timber: 120, stone: 80, food: 100, iron: 20 };
+  readonly stocks: Stocks = {
+    timber: 120, stone: 80, food: 100, ore: 0, iron: 0, tools: 0,
+  };
   /** Net change per tick, kept for the readout so the trend is visible. */
-  readonly rates: Stocks = { timber: 0, stone: 0, food: 0, iron: 0 };
+  readonly rates: Stocks = {
+    timber: 0, stone: 0, food: 0, ore: 0, iron: 0, tools: 0,
+  };
 
   /** What the army is costing, kept separate so the bill is legible. */
   upkeep = 0;
@@ -102,11 +122,9 @@ export class Economy {
     territory: Standings | null = null,
     workforce: Labour | null = null,
     population: number | null = null,
+    supply: Supply | null = null,
   ): void {
-    let timber = 0;
-    let stone = 0;
-    let food = 0;
-    let iron = 0;
+    const made: Stocks = { timber: 0, stone: 0, food: 0, ore: 0, iron: 0, tools: 0 };
     let households = 0;
 
     for (const b of buildings) {
@@ -114,47 +132,22 @@ export class Economy {
       const type = buildingType(b.typeId);
 
       if (type.family === 'residential') households++;
+      if (!type.produces) continue;
 
-      // Sullen ground works badly. Nothing is destroyed and nothing is
-      // forbidden — it simply does not pay, which is a thing you can see on
-      // the map rather than a rule you have to be told.
-      const here = territory?.standingAt(b.pos.x, b.pos.y);
-      const held = here?.standing === 'held' ? HELD_YIELD : 1;
-
-      // **Staffing is the second half of every yield.** A works produces what
-      // its land holds *times how well it is manned*, so a sawmill in the
-      // deepest wood on the map is worth nothing if nobody can walk to it. That
-      // is the trade that makes siting a decision rather than a formality.
-      const yield_ = held * (workforce ? workforce.staffingOf(b) : 1);
-
-      switch (type.id) {
-        case 'sawmill':
-          timber += harvestable(land.timber, b.pos, CATCHMENT) * TIMBER_RATE * yield_;
-          break;
-        case 'quarry':
-          stone += harvestable(land.stone, b.pos, CATCHMENT) * STONE_RATE * yield_;
-          break;
-        case 'farm':
-          food += harvestable(land.arable, b.pos, CATCHMENT) * FOOD_RATE * yield_;
-          break;
-        case 'mine':
-          iron += harvestable(land.ore, b.pos, CATCHMENT) * IRON_RATE * yield_;
-          break;
-        case 'watermill':
-          // A mill grinds what the river gives it, which is the payoff for the
-          // hydrology: flow and fall are a real siting constraint (design/07 §4).
-          food +=
-            Math.min(2.4, terrain.millPotentialAt(b.pos.x, b.pos.y)) * 0.09 * yield_;
-          break;
-      }
+      const out = this.outputOf(b, land, terrain, territory, workforce, supply);
+      // What the neighbours drew off never reaches the barn. That is the other
+      // half of self-throttling: feed every sawmill you have into foundries and
+      // your timber stops accumulating, and you can see exactly where it went.
+      const kept = Math.max(0, out - (supply ? supply.takenFrom(b) : 0));
+      made[type.produces.resource] += kept;
     }
 
     // Winter is the pressure: it takes more than it gives, every year, whatever
     // the player does (design/00, Axis 7).
-    timber *= season.labour;
-    stone *= season.labour;
-    iron *= season.labour;
-    food *= season.harvest;
+    for (const r of RESOURCE_KINDS) {
+      if (r !== 'food') made[r] *= season.labour;
+    }
+    made.food *= season.harvest;
     // **People eat, not buildings.** Counting houses meant an empty town ate as
     // much as a full one, which quietly broke the whole growth loop: building
     // housing cost you food whether or not anybody moved in.
@@ -173,15 +166,12 @@ export class Economy {
       (garrisonUpkeep(buildings, OWNER_PLAYER) + warbands * WARBAND_UPKEEP) *
       season.appetite;
 
-    this.rates.timber = timber;
-    this.rates.stone = stone;
-    this.rates.iron = iron;
-    this.rates.food = food - eaten - this.upkeep;
+    for (const r of RESOURCE_KINDS) this.rates[r] = made[r];
+    this.rates.food = made.food - eaten - this.upkeep;
 
-    this.stocks.timber = Math.min(9999, this.stocks.timber + timber);
-    this.stocks.stone = Math.min(9999, this.stocks.stone + stone);
-    this.stocks.iron = Math.min(9999, this.stocks.iron + iron);
-    this.stocks.food = Math.min(9999, this.stocks.food + this.rates.food);
+    for (const r of RESOURCE_KINDS) {
+      this.stocks[r] = Math.min(9999, this.stocks[r] + this.rates[r]);
+    }
 
     // Running out stops the town growing, but never destroys anything: `00`
     // wants pressure that you adapt to, not punishment for bad arithmetic.
@@ -193,30 +183,63 @@ export class Economy {
     }
   }
 
+  /**
+   * What one works puts out this tick, before its neighbours take their share.
+   *
+   * Every multiplier a yield has, in one place: the ground under it, whether the
+   * ground is really yours, whether anybody works there, and — for a works that
+   * combines inputs — whether those inputs can reach it. A harvesting works is
+   * scaled by its catchment; a converting one by its feed; the watermill by the
+   * river, which is the payoff for the hydrology (design/07 §4).
+   */
+  outputOf(
+    b: Building,
+    land: Land,
+    terrain: Terrain,
+    territory: Standings | null = null,
+    workforce: Labour | null = null,
+    supply: Supply | null = null,
+  ): number {
+    const type = buildingType(b.typeId);
+    if (!type.produces) return 0;
+
+    // Sullen ground works badly. Nothing is destroyed and nothing is
+    // forbidden — it simply does not pay, which is a thing you can see on
+    // the map rather than a rule you have to be told.
+    const here = territory?.standingAt(b.pos.x, b.pos.y);
+    const held = here?.standing === 'held' ? HELD_YIELD : 1;
+
+    // **Staffing is the second half of every yield.** A works produces what
+    // its land holds *times how well it is manned*, so a sawmill in the
+    // deepest wood on the map is worth nothing if nobody can walk to it. That
+    // is the trade that makes siting a decision rather than a formality.
+    let out = held * (workforce ? workforce.staffingOf(b) : 1) * type.produces.rate;
+
+    if (type.harvests) {
+      out *= harvestable(land[HARVEST_FIELD[type.harvests]], b.pos, CATCHMENT);
+    }
+    if (type.id === 'watermill') {
+      out *= Math.min(2.4, terrain.millPotentialAt(b.pos.x, b.pos.y));
+    }
+    if (type.consumes && supply) out *= supply.feedOf(b);
+
+    return out;
+  }
+
   canAfford(cost: Cost): boolean {
-    return (
-      this.stocks.timber >= (cost.timber ?? 0) &&
-      this.stocks.stone >= (cost.stone ?? 0) &&
-      this.stocks.food >= (cost.food ?? 0) &&
-      this.stocks.iron >= (cost.iron ?? 0)
-    );
+    for (const r of RESOURCE_KINDS) {
+      if (this.stocks[r] < (cost[r] ?? 0)) return false;
+    }
+    return true;
   }
 
   /** What a cost is short of, for the build UI. Empty when affordable. */
   shortfall(cost: Cost): Resource[] {
-    const missing: Resource[] = [];
-    if (this.stocks.timber < (cost.timber ?? 0)) missing.push('timber');
-    if (this.stocks.stone < (cost.stone ?? 0)) missing.push('stone');
-    if (this.stocks.food < (cost.food ?? 0)) missing.push('food');
-    if (this.stocks.iron < (cost.iron ?? 0)) missing.push('iron');
-    return missing;
+    return RESOURCE_KINDS.filter((r) => this.stocks[r] < (cost[r] ?? 0));
   }
 
   spend(cost: Cost): void {
-    this.stocks.timber -= cost.timber ?? 0;
-    this.stocks.stone -= cost.stone ?? 0;
-    this.stocks.food -= cost.food ?? 0;
-    this.stocks.iron -= cost.iron ?? 0;
+    for (const r of RESOURCE_KINDS) this.stocks[r] -= cost[r] ?? 0;
   }
 }
 

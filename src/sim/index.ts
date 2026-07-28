@@ -16,6 +16,7 @@ export * from './flood';
 export * from './territory';
 export * from './land';
 export * from './economy';
+export * from './supply';
 export * from './plans';
 export * from './calendar';
 export * from './military';

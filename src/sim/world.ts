@@ -17,6 +17,7 @@ import { Needs, NEEDS_INTERVAL, NEED_LABELS } from './needs';
 import { Ages } from './ages';
 import { Quarters, QUARTER_INTERVAL } from './quarters';
 import { CATCHMENT, Economy, roadCost } from './economy';
+import { Supply, SUPPLY_INTERVAL } from './supply';
 import { computeLand, harvestable, type Land } from './land';
 import { planRoads, type PlanSpec } from './plans';
 import { makeNameRng, streetName, townName } from './names';
@@ -50,7 +51,7 @@ const TERRITORY_INTERVAL = 12;
 const MILITARY_INTERVAL = 4;
 
 /** Why a building is not working. Each has an obvious fix. */
-export type ProblemKind = 'unstaffed' | 'barren' | 'unrest' | 'unserved';
+export type ProblemKind = 'unstaffed' | 'barren' | 'unrest' | 'unserved' | 'starved';
 
 export interface PlacementResult {
   ok: boolean;
@@ -87,7 +88,9 @@ export class World {
   readonly populace = new Populace();
   readonly needs = new Needs();
   readonly ages = new Ages();
+  readonly supply = new Supply();
   private needsCooldown = 0;
+  private supplyCooldown = 0;
   private labourCooldown = 0;
   private quarterCooldown = 0;
   private wasHungry = false;
@@ -488,6 +491,18 @@ export class World {
       this.needs.coverage,
     );
 
+    // Who feeds whom, before anything is produced. A works that combines inputs
+    // runs at the rate its neighbours can supply it, so the chain has to be
+    // resolved before the yields it scales (design/00, Axis 2).
+    if (this.supplyCooldown > 0) {
+      this.supplyCooldown--;
+    } else {
+      this.supplyCooldown = SUPPLY_INTERVAL;
+      this.supply.update(this.buildings, this.roads, (b) =>
+        this.economy.outputOf(b, this.land, this.terrain, this.territory, this.labour, this.supply),
+      );
+    }
+
     this.economy.update(
       this.buildings,
       this.land,
@@ -497,6 +512,7 @@ export class World {
       this.territory,
       this.labour,
       this.populace.report.population,
+      this.supply,
     );
 
     // The rival only proposes; the world decides whether the ground allows it.
@@ -841,6 +857,18 @@ export class World {
           out.push({ building: b, kind: 'barren' });
           continue;
         }
+      }
+
+      // Starved before unstaffed, for the same reason barren comes before both:
+      // telling somebody to house workers for a foundry that has no ore in
+      // reach would be advice that does not help.
+      // Not merely *short* — badly short. A foundry running at nine tenths is
+      // sharing a mine with somebody, which is a normal state of affairs and
+      // not something to put a marker over; the threshold matches the labour
+      // one below it so the two read as the same severity of complaint.
+      if (type.consumes && this.supply.feedOf(b) < 0.35) {
+        out.push({ building: b, kind: 'starved' });
+        continue;
       }
 
       if (type.jobs && this.labour.staffingOf(b) < 0.35) {

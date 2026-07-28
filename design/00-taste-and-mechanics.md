@@ -182,6 +182,73 @@ underneath.
 is its throughput. A starved chain is a visibly thin stream. That is the entire
 debugging interface, it needs no numbers, and it's pretty.
 
+#### Built — the structural half, and it is the best decision in the game
+
+`src/sim/supply.ts`. This section calls itself "probably the single most
+important call in the document" and only half of it had ever been implemented:
+every works was a **harvester** that turned ground into a global stock, nothing
+consumed anything, and the foundry — the one building in the catalogue whose
+entire job is to combine two things — produced nothing at all. There were no
+chains, and therefore no reason for any building to be near any other.
+
+The structural half is one rule:
+
+> **A works that combines inputs is fed by what stands near it, not by what is
+> in the barn.**
+
+A foundry needs ore *and* timber reaching it. Ore sits in a few scarce seams
+(3% of the map) and wood grows somewhere else entirely, so siting a foundry
+means finding ground where a mine's catchment and a sawmill's catchment
+overlap — or building the street that makes them overlap. That is a genuine
+spatial problem with no correct answer, and it contains no arithmetic at all.
+
+**Roads finally do something economic.** The section promises "a road extends a
+building's catchment; roads are reach, not throughput", and roads had been pure
+fabric until now:
+
+> **150 metres across country. 300 along a street.**
+
+Measured: two works 202m apart trade **0.000 iron/tick** across open ground and
+**0.136** with a street between them. So laying a lane out to an ore seam is a
+real economic act with a real price in stone.
+
+**Self-throttling falls out rather than being imposed**, and in two directions.
+A producer's output is shared equally among everybody drawing on it, so a second
+foundry on one mine halves them both (measured: 0.292 → 0.134 iron/tick with the
+second built). And **what a neighbour draws never reaches the barn** — a mill
+alone banks 1.586 timber/tick, and 1.530 with a foundry drinking from it. Both
+are visible as buildings running slow rather than as numbers in a panel.
+
+**The tree, and it stays inside the cap.** Axis 3's three-node limit holds, and
+the doc's own example — *Ore → Smelter → Tools* — is now literally what runs:
+
+| | Land | Raw | Made |
+|---|---|---|---|
+| Wood | woodland | Sawmill → **timber** | — |
+| Stone | rock | Quarry → **stone** | — |
+| Food | arable, rivers | Farm, Watermill → **food** | — |
+| Metal | ore seams | Mine → **ore** | Foundry (ore + timber) → **iron** → Workshop (iron + timber) → **tools** |
+
+Food is deliberately left a single node. A grain-then-bakery chain is the doc's
+third example and it is the one that must not be built yet: food gates founding,
+and a hamlet that starves before it can put up its second building is not a
+harder game, it is a broken one.
+
+**Tools are the payoff, and they are what "unlocks new building uses" means
+here.** A church, a market cross, a guildhall, a watchtower and a keep all want
+them, and there is no other way to get them — so the landmarks of a town are
+literally built out of the chain that runs through it. That is a gate with a
+*place* behind it rather than a number: to build a church you need a seam, a
+wood, and somewhere the two meet.
+
+**The interface is the map.** Axis 2's "free legibility win" — render each
+connection as a flow whose thickness is its throughput — is the *entire*
+interface the tree gets. No panel, no ratios, no numbers: a line between two
+buildings, coloured by what moves along it and thick in proportion to how much.
+A starved chain is a visibly thin stream and a missing chain is a missing line.
+The site preview draws the same thing before you pay, so placing a foundry is
+"put it where two of these light up".
+
 #### Built — and the second half of "decoration = carriers" was doing nothing
 
 The rule survives intact, and it turns out it was being applied too literally.
@@ -261,7 +328,9 @@ built from. All of it terminates in something visible. But shipping it exposed
 that the axis was asking the wrong question.
 
 **Depth was never the problem. The problem was that there was only one decision,
-and it was always yes.** A three-node chain where putting up a sawmill makes
+and it was always yes.** (Since written, a fourth thing was added and it *is*
+about the chain: nothing combined anything. See Axis 2 above — the fix was not
+more depth but making a works depend on its neighbours.) A three-node chain where putting up a sawmill makes
 timber appear is not a shallow resource game, it is a shopping list. Three things
 had to be added before it became a game at all, and none of them is depth:
 

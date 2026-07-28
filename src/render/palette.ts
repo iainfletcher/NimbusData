@@ -225,6 +225,22 @@ export const RESOURCE_COLOURS: Record<string, number> = {
   ore: 0xb1552c,
 };
 
+/**
+ * What each good in the chain is drawn as when it moves (`supply.ts`).
+ *
+ * Keyed to the land overlay where the two overlap — ore is the same rust as the
+ * seam it came out of — so a line of ore running to a foundry is legibly the
+ * same substance as the patch on the map it was dug from.
+ */
+export const SUPPLY_COLOURS: Record<string, number> = {
+  timber: 0x6f9c56,
+  stone: 0x9a9aa2,
+  food: 0xc9a83c,
+  ore: 0xb1552c,
+  iron: 0x7e8fa6,
+  tools: 0xd8a417,
+};
+
 export const RESOURCE_LABELS: Record<string, string> = {
   timber: 'Timber',
   stone: 'Stone',

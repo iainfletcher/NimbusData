@@ -198,7 +198,8 @@ async function main(): Promise<void> {
     const stocks = world.economy.stocks;
     const signature =
       `${Math.floor(stocks.timber)},${Math.floor(stocks.stone)},` +
-      `${Math.floor(stocks.iron)},${Math.floor(stocks.food)},${world.ages.index}`;
+      `${Math.floor(stocks.iron)},${Math.floor(stocks.food)},` +
+      `${Math.floor(stocks.tools)},${world.ages.index}`;
     if (signature === paletteState) return;
     paletteState = signature;
 
@@ -252,6 +253,7 @@ async function main(): Promise<void> {
   const btnPlan = el<HTMLButtonElement>('view-plan');
   const btnOverlay = el<HTMLButtonElement>('toggle-overlay');
   const btnStreets = el<HTMLButtonElement>('toggle-streets');
+  const btnSupply = el<HTMLButtonElement>('toggle-supply');
   const btnPause = el<HTMLButtonElement>('toggle-pause');
 
   function setView(mode: ViewMode): void {
@@ -508,6 +510,10 @@ async function main(): Promise<void> {
   );
   btnLand.addEventListener('click', () => setOverlay(overlayNow() === 'land' ? null : 'land'));
   btnStreets.addEventListener('click', () => setStreets(!view.showStreets));
+  btnSupply.addEventListener('click', () => {
+    view.showSupply = !view.showSupply;
+    btnSupply.setAttribute('aria-pressed', String(view.showSupply));
+  });
   btnPause.addEventListener('click', () => setPaused(!paused));
 
   el('seed-town').addEventListener('click', () => {
@@ -516,6 +522,7 @@ async function main(): Promise<void> {
     world.economy.stocks.timber += 1400;
     world.economy.stocks.stone += 1400;
     world.economy.stocks.iron += 400;
+    world.economy.stocks.tools += 300;
     seedTestTown(world);
     seedRivalTown(world);
     // A scenario town arrives with people already in it. Without this the whole
@@ -691,6 +698,8 @@ async function main(): Promise<void> {
   const sStone = el('s-stone');
   const sIron = el('s-iron');
   const sFood = el('s-food');
+  const sOre = el('s-ore');
+  const sTools = el('s-tools');
   const sJobs = el('s-jobs');
   const sPop = el('s-pop');
   const sCap = el('s-cap');
@@ -724,6 +733,8 @@ async function main(): Promise<void> {
     sStone.textContent = String(Math.floor(stocks.stone));
     sIron.textContent = String(Math.floor(stocks.iron));
     sFood.textContent = String(Math.floor(stocks.food));
+    sOre.textContent = String(Math.floor(stocks.ore));
+    sTools.textContent = String(Math.floor(stocks.tools));
 
     // Population, and — when it has stopped — *why*. A town that stalls with no
     // explanation is the worst thing a builder can do, so the reason is on the
@@ -750,6 +761,11 @@ async function main(): Promise<void> {
       work.jobs > work.filled,
     );
     // Falling stocks are flagged, since a trend matters more than a level.
+    // Ore piling up with no iron coming out is the chain's signature failure —
+    // a mine with no foundry in reach — so it is flagged on the *stock* rather
+    // than on the rate: a growing pile is the symptom, not a falling one.
+    sOre.parentElement!.classList.toggle('low', stocks.ore > 40 && rates.iron <= 0);
+    sTools.parentElement!.classList.toggle('low', rates.tools <= 0 && stocks.tools < 10);
     sTimber.parentElement!.classList.toggle('low', rates.timber <= 0 && stocks.timber < 30);
     sIron.parentElement!.classList.toggle('low', rates.iron <= 0 && stocks.iron < 20);
     sStone.parentElement!.classList.toggle('low', rates.stone <= 0 && stocks.stone < 30);

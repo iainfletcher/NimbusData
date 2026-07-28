@@ -49,6 +49,20 @@ export function characterIndex(c: Character): number {
 export type BuildingFamily = 'economic' | 'civic' | 'residential' | 'military';
 
 /**
+ * What the town keeps.
+ *
+ * Four come out of the ground and two are **made** by combining the others
+ * (`supply.ts`). The line matters: a raw good answers "is the ground here any
+ * good", and a made good answers "does this building have neighbours", which
+ * are two different questions and the second one had never been asked.
+ *
+ * Here rather than in `economy.ts` because the catalogue has to name them and
+ * the catalogue must not depend on the economy.
+ */
+export const RESOURCE_KINDS = ['timber', 'stone', 'food', 'ore', 'iron', 'tools'] as const;
+export type Resource = (typeof RESOURCE_KINDS)[number];
+
+/**
  * What a building contributes to the military field (design/01 §2).
  *
  * Deliberately the opposite of a cultural emission in every property: it is
@@ -91,7 +105,23 @@ export interface BuildingType {
   /** Housing that has already evolved does not evolve again in the MVP. */
   isEvolved?: boolean;
   /** What it costs to build. Absent means free — greens and the like. */
-  cost?: { timber?: number; stone?: number; food?: number; iron?: number };
+  cost?: Partial<Record<Resource, number>>;
+  /**
+   * What this works takes in, per tick at full rate (`supply.ts`).
+   *
+   * Drawn from *neighbours within reach*, never from the town's stock — a
+   * foundry with no mine near it does not quietly spend your ore, it stands
+   * idle. This is the whole of what makes a chain a spatial decision.
+   */
+  consumes?: Partial<Record<Resource, number>>;
+  /**
+   * What it puts out, and how fast.
+   *
+   * `harvests` says what ground it draws on; this says what comes out of it.
+   * A works with `harvests` is scaled by the land; one with `consumes` is
+   * scaled by what reaches it; a couple have both.
+   */
+  produces?: { resource: Resource; rate: number };
   /** Military only: what it holds, how far, and what it eats. */
   garrison?: Garrison;
   /**

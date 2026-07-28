@@ -105,6 +105,8 @@ function freshWorld(seed = 20260727) {
   // keep everywhere on the map and half these trials report "no ground", which
   // is what happened the first time iron was added.
   world.economy.stocks.iron = 9000;
+  world.economy.stocks.ore = 9000;
+  world.economy.stocks.tools = 9000;
   // And the whole catalogue, for the same reason. Most of these trials are
   // about territory, labour or the field, not about the era arc — gating them
   // behind a hamlet's unlocks would just be the iron mistake a second time.
@@ -697,7 +699,7 @@ claim(
 );
 
 claim(
-  'Ore exists in a few seams, and a mine on one produces iron',
+  'Ore exists in a few seams, and a mine on one produces ore',
   'land.ts — ore is scarce and lumpy on purpose, so a seam is worth fighting over',
   (note) => {
     const world = freshWorld();
@@ -730,9 +732,9 @@ claim(
     serveNeeds(world, at);
     run(world, 30);
 
-    note(`ore on ${share.toFixed(1)}% of the map; a mine on the best seam yields ${world.economy.rates.iron.toFixed(3)} iron/tick`);
+    note(`ore on ${share.toFixed(1)}% of the map; a mine on the best seam yields ${world.economy.rates.ore.toFixed(3)} ore/tick`);
     // Scarce, but not absent — and a mine on it must actually pay.
-    return share > 0.2 && share < 14 && world.economy.rates.iron > 0;
+    return share > 0.2 && share < 14 && world.economy.rates.ore > 0;
   },
 );
 
@@ -1333,6 +1335,273 @@ claim(
         `${inside} of them inside a building`,
     );
     return inside === 0 && route.length > 3 && length >= direct;
+  },
+);
+
+// ---- The chain: combining inputs, and adjacency as the only logistics -------
+
+/**
+ * A works with housing beside it, so staffing never becomes the variable.
+ *
+ * Every yield in this game is ground × staffing × feed, and a chain trial that
+ * forgets the middle term measures labour instead — the confound that has now
+ * caught three separate rounds of work.
+ */
+function staffedWorks(world, typeId, at) {
+  const p = siteNear(world, at.x, at.y, typeId);
+  if (!p || !world.place(typeId, p).ok) return null;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const h = siteNear(world, p.x + Math.cos(a) * 42, p.y + Math.sin(a) * 42, 'cottage');
+    if (h) world.place('cottage', h);
+  }
+  return p;
+}
+
+claim(
+  'A foundry with nothing in reach smelts nothing; give it a mine and a mill and it does',
+  'design/00 Axis 2 — a works that combines inputs is fed by what stands near it',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    // Best ore on the map, so the mine is not the variable either.
+    let best = null;
+    let bestValue = 0;
+    for (let cy = 8; cy < 248; cy += 2) {
+      for (let cx = 8; cx < 248; cx += 2) {
+        const v = world.land.ore[cy * 256 + cx];
+        if (v > bestValue) {
+          bestValue = v;
+          best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+        }
+      }
+    }
+    if (!best) return note('no ore anywhere'), false;
+
+    // A foundry far from everything: correct building, wrong place.
+    const alone = staffedWorks(world, 'foundry', { x: C - 320, y: C + 300 });
+    if (!alone) return note('could not site the lonely foundry'), false;
+    serveNeeds(world, alone);
+    run(world, 400);
+    const idle = world.economy.rates.iron;
+    const starvedAlone = world.supply.starved.has(
+      world.buildings.find((b) => b.typeId === 'foundry').id,
+    );
+
+    // And one on the seam, with a mill in the wood beside it.
+    const mine = staffedWorks(world, 'mine', best);
+    const mill = staffedWorks(world, 'sawmill', { x: best.x + 70, y: best.y + 40 });
+    const fed = staffedWorks(world, 'foundry', { x: best.x + 40, y: best.y + 20 });
+    if (!mine || !mill || !fed) return note('could not site the works'), false;
+    serveNeeds(world, fed);
+    run(world, 500);
+    const working = world.economy.rates.iron;
+
+    note(
+      `alone: ${idle.toFixed(3)} iron/tick (starved: ${starvedAlone}); ` +
+        `on the seam with a mill in reach: ${working.toFixed(3)}`,
+    );
+    return idle === 0 && starvedAlone && working > 0;
+  },
+);
+
+claim(
+  'What a neighbour draws never reaches the barn',
+  'supply.ts — the other half of self-throttling, and the reason a chain has a cost',
+  (note) => {
+    const measure = (withFoundry) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+      world.economy.stocks.ore = 0;
+
+      let best = null;
+      let bestValue = 0;
+      for (let cy = 8; cy < 248; cy += 4) {
+        for (let cx = 8; cx < 248; cx += 4) {
+          const v = world.land.timber[cy * 256 + cx];
+          if (v > bestValue) {
+            bestValue = v;
+            best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+          }
+        }
+      }
+      const mill = staffedWorks(world, 'sawmill', best);
+      if (!mill) return null;
+      serveNeeds(world, mill);
+      if (withFoundry) {
+        // A mine right beside it too, or the foundry is starved of ore and
+        // draws no timber either — which would prove nothing.
+        staffedWorks(world, 'mine', { x: mill.x + 46, y: mill.y + 30 });
+        staffedWorks(world, 'foundry', { x: mill.x + 30, y: mill.y + 20 });
+      }
+      run(world, 500);
+      return world.economy.rates.timber;
+    };
+
+    const free = measure(false);
+    const drawn = measure(true);
+    if (free === null || drawn === null) return note('could not site the mill'), false;
+
+    note(
+      `mill alone puts ${free.toFixed(3)} timber/tick in the barn; ` +
+        `with a foundry drinking from it, ${drawn.toFixed(3)}`,
+    );
+    return free > 0 && drawn < free;
+  },
+);
+
+claim(
+  'Two foundries on one mine each run at half',
+  'supply.ts — self-throttling: over-building is wasteful, never broken',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    let best = null;
+    let bestValue = 0;
+    for (let cy = 8; cy < 248; cy += 2) {
+      for (let cx = 8; cx < 248; cx += 2) {
+        const v = world.land.ore[cy * 256 + cx];
+        if (v > bestValue) {
+          bestValue = v;
+          best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+        }
+      }
+    }
+    const mine = staffedWorks(world, 'mine', best);
+    staffedWorks(world, 'sawmill', { x: best.x + 70, y: best.y + 40 });
+    const one = staffedWorks(world, 'foundry', { x: best.x + 40, y: best.y + 20 });
+    if (!mine || !one) return note('could not site the works'), false;
+    serveNeeds(world, one);
+    run(world, 500);
+
+    const solo = world.economy.rates.iron;
+    const two = staffedWorks(world, 'foundry', { x: best.x - 40, y: best.y - 20 });
+    if (!two) return note('nowhere for a second foundry'), false;
+    run(world, 500);
+    const shared = world.economy.rates.iron;
+
+    // Twice the buildings must not be twice the iron: one seam is one seam.
+    note(`one foundry ${solo.toFixed(3)} iron/tick, two ${shared.toFixed(3)}`);
+    return solo > 0 && shared < solo * 1.6;
+  },
+);
+
+claim(
+  'A street doubles what a works can reach',
+  'design/00 Axis 2 — a road extends a catchment: roads are reach, not throughput',
+  (note) => {
+    const measure = (withRoad) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+
+      let best = null;
+      let bestValue = 0;
+      for (let cy = 8; cy < 248; cy += 2) {
+        for (let cx = 8; cx < 248; cx += 2) {
+          const v = world.land.ore[cy * 256 + cx];
+          if (v > bestValue) {
+            bestValue = v;
+            best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+          }
+        }
+      }
+      const mine = staffedWorks(world, 'mine', best);
+      if (!mine) return null;
+      // Deliberately beyond the cross-country reach and inside the street one.
+      const far = { x: mine.x + 210, y: mine.y };
+      const foundry = staffedWorks(world, 'foundry', far);
+      const mill = staffedWorks(world, 'sawmill', { x: far.x + 50, y: far.y + 40 });
+      if (!foundry || !mill) return null;
+      serveNeeds(world, foundry);
+
+      if (withRoad) world.addRoad([{ ...mine }, { ...foundry }], 'street');
+      run(world, 500);
+      return { iron: world.economy.rates.iron, gap: Math.hypot(foundry.x - mine.x, foundry.y - mine.y) };
+    };
+
+    const without = measure(false);
+    const withIt = measure(true);
+    if (!without || !withIt) return note('could not site the works'), false;
+
+    note(
+      `${withIt.gap.toFixed(0)}m apart: ${without.iron.toFixed(3)} iron/tick across country, ` +
+        `${withIt.iron.toFixed(3)} with a street between them`,
+    );
+    return without.iron === 0 && withIt.iron > 0;
+  },
+);
+
+claim(
+  'The chain runs three deep in one pass: ore, iron, tools',
+  'design/00 Axis 3 — a hard cap of three nodes, every one of them a visible thing',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    world.economy.stocks.ore = 0;
+    world.economy.stocks.iron = 0;
+    world.economy.stocks.tools = 0;
+
+    let best = null;
+    let bestValue = 0;
+    for (let cy = 8; cy < 248; cy += 2) {
+      for (let cx = 8; cx < 248; cx += 2) {
+        const v = world.land.ore[cy * 256 + cx];
+        if (v > bestValue) {
+          bestValue = v;
+          best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+        }
+      }
+    }
+    const mine = staffedWorks(world, 'mine', best);
+    const mill = staffedWorks(world, 'sawmill', { x: best.x + 74, y: best.y + 44 });
+    const foundry = staffedWorks(world, 'foundry', { x: best.x + 40, y: best.y + 22 });
+    const shop = staffedWorks(world, 'workshop', { x: best.x + 58, y: best.y - 18 });
+    if (!mine || !mill || !foundry || !shop) return note('could not site the chain'), false;
+    serveNeeds(world, foundry);
+
+    run(world, 600);
+    const r = world.economy.rates;
+    const s = world.economy.stocks;
+
+    // The workshop must be fed in the *same* update the foundry is, or the
+    // second stage runs a tick behind for ever — which is what a single-pass
+    // solve would give.
+    note(
+      `rates ore ${r.ore.toFixed(3)} · iron ${r.iron.toFixed(3)} · tools ${r.tools.toFixed(3)}; ` +
+        `stocked ${s.tools.toFixed(1)} tools`,
+    );
+    return r.tools > 0 && s.tools > 0;
+  },
+);
+
+claim(
+  'Tools are what a landmark is built with, and you cannot fake them',
+  'the join between the chain and the catalogue — combining inputs unlocks new uses',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+    // Find the site while it is affordable, or `siteNear` refuses everywhere for
+    // the very reason under test and the trial reports "no ground".
+    const at = siteNear(world, C, C, 'church');
+    if (!at) return note('no ground'), false;
+
+    world.economy.stocks.tools = 0;
+    const without = world.canPlace('church', at);
+
+    world.economy.stocks.tools = 200;
+    const withThem = world.canPlace('church', at);
+
+    const needsTools = ['church', 'market', 'guildhall', 'keep', 'watchtower'].filter(
+      (id) => (buildingType(id).cost ?? {}).tools,
+    );
+
+    note(
+      `without tools: ${without.reason ?? 'allowed'}; with them: ${withThem.ok ? 'allowed' : withThem.reason}; ` +
+        `${needsTools.length} landmark(s) want them`,
+    );
+    return !without.ok && withThem.ok && needsTools.length >= 4;
   },
 );
 

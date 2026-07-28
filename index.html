@@ -275,7 +275,7 @@
       #workforce.short b { color: #e0b06a; }
       #workforce i { font-style: normal; color: #e0b06a; font-size: 11px; }
 
-      #stocks {
+      .stocks {
         display: flex;
         justify-content: space-between;
         gap: 6px;
@@ -287,8 +287,19 @@
         color: var(--muted);
         font-size: 12px;
       }
-      #stocks b { color: var(--text); font-weight: 600; }
-      #stocks .low b { color: #e08a6a; }
+      .stocks b { color: var(--text); font-weight: 600; }
+      .stocks .low b { color: #e08a6a; }
+      /*
+       * The made goods sit on their own line under the raw ones. Ore, iron and
+       * tools are not four more numbers of the same kind — they are the output
+       * of a chain, and a row of six identical figures would hide the one fact
+       * worth knowing, which is that the second row depends on the first.
+       */
+      .stocks.made {
+        margin-top: 4px;
+        padding-top: 0;
+        border-top: none;
+      }
 
       #readout {
         margin-top: 10px;
@@ -483,6 +494,9 @@
         <button id="toggle-problems" aria-pressed="true">Alerts</button>
       </div>
       <div class="row">
+        <button id="toggle-supply" aria-pressed="false">Supply</button>
+      </div>
+      <div class="row">
         <button id="tool-warband">Warbands</button>
         <button id="toggle-hint" aria-pressed="false">Keys</button>
       </div>
@@ -490,11 +504,15 @@
         <button id="seed-town">Seed test town</button>
         <button id="clear-town">Clear</button>
       </div>
-      <div id="stocks">
+      <div class="stocks">
         <span><b id="s-timber">0</b> timber</span>
         <span><b id="s-stone">0</b> stone</span>
-        <span><b id="s-iron">0</b> iron</span>
         <span><b id="s-food">0</b> food</span>
+      </div>
+      <div class="stocks made">
+        <span><b id="s-ore">0</b> ore</span>
+        <span><b id="s-iron">0</b> iron</span>
+        <span><b id="s-tools">0</b> tools</span>
       </div>
       <div id="workforce">
         <span class="k">People</span>

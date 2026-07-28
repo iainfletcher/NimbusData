@@ -14,6 +14,9 @@ import {
   CATCHMENT,
   RESOURCES,
   WALK_TO_WORK,
+  SUPPLY_REACH,
+  SUPPLY_REACH_ROAD,
+  OWNER_PLAYER,
   type ErrandKind,
   type Person,
   type ProblemKind,
@@ -35,6 +38,7 @@ import {
   FLAT_LAMBERT,
   FRONTIER_COLOUR,
   RESOURCE_COLOURS,
+  SUPPLY_COLOURS,
   GROUND_SEASON,
   SUN,
   TERRITORY_COLOURS,
@@ -72,6 +76,7 @@ export class WorldView {
   private roads = new Graphics();
   private overlay = new Graphics();
   private border = new Graphics();
+  private supply = new Graphics();
   /**
    * Buildings, decor and people all have to sort against each other, but the
    * first two are static and the third moves every frame. Redrawing thousands of
@@ -114,6 +119,17 @@ export class WorldView {
   overlayMode: 'character' | 'land' = 'character';
   showStreets = true;
   showBorders = false;
+  /**
+   * Draw who is feeding whom.
+   *
+   * `design/00` Axis 2 calls this the "free legibility win": render each
+   * connection as a flow whose thickness is its throughput, and a starved chain
+   * is a visibly thin stream. It is the entire debugging interface for the
+   * resource tree, it needs no numbers, and it is the only way to see the one
+   * decision the chain is made of — whether two catchments overlap.
+   */
+  showSupply = false;
+  private supplyVersion = -1;
   private borderVersion = -1;
   private selectedBand: number | null = null;
 
@@ -143,7 +159,11 @@ export class WorldView {
       this.root.addChild(statics, people);
     }
 
-    this.root.addChild(this.site, this.ghost);
+    // The supply flows go *over* the town, with the site preview and the ghost.
+    // They are diagnostics rather than scenery: a line hidden behind the very
+    // building it runs to would answer nothing, which is what putting them down
+    // with the ground layers turned out to mean in practice.
+    this.root.addChild(this.supply, this.site, this.ghost);
   }
 
   get viewMode(): ViewMode {
@@ -207,7 +227,7 @@ export class WorldView {
     if (!typeId || !pos) return;
 
     const type = buildingType(typeId);
-    if (!type.harvests && !type.jobs) return;
+    if (!type.harvests && !type.jobs && !type.consumes) return;
 
     const ring = (radius: number, colour: number, alpha: number, width: number) => {
       const pts: number[] = [];
@@ -254,6 +274,37 @@ export class WorldView {
     }
 
     if (type.jobs) ring(WALK_TO_WORK, 0x7fa7c8, 0.6, 0.5);
+
+    // For a works that combines inputs, the question is not what the ground
+    // holds — it is **what is already standing near enough to feed it**. So the
+    // preview draws the answer directly: the reach it would have, and a line to
+    // every producer inside it, coloured by what would come along it. Placing a
+    // foundry becomes "put it where two of these light up", which is the whole
+    // decision the chain is made of, made before you pay for it.
+    if (!type.consumes) return;
+
+    const onStreet = this.world.roadNear(pos, 26) !== null;
+    const reach = onStreet ? SUPPLY_REACH_ROAD : SUPPLY_REACH;
+    ring(reach, onStreet ? 0xd8c9a0 : 0x9aa0a6, 0.5, 0.5);
+
+    const here = this.project(pos.x, pos.y, this.world.terrain.heightAt(pos.x, pos.y) + 3);
+    for (const b of this.world.buildings) {
+      if (b.owner !== OWNER_PLAYER) continue;
+      const other = buildingType(b.typeId);
+      const gives = other.produces?.resource;
+      if (!gives || !(gives in type.consumes)) continue;
+      if (Math.hypot(b.pos.x - pos.x, b.pos.y - pos.y) > reach) continue;
+      // Both ends have to front a street for the long reach to apply.
+      if (reach === SUPPLY_REACH_ROAD && !this.world.roadNear(b.pos, 26)) {
+        if (Math.hypot(b.pos.x - pos.x, b.pos.y - pos.y) > SUPPLY_REACH) continue;
+      }
+
+      const from = this.project(b.pos.x, b.pos.y, this.world.terrain.heightAt(b.pos.x, b.pos.y) + 3);
+      g.moveTo(from.x, from.y)
+        .lineTo(here.x, here.y)
+        .stroke({ color: SUPPLY_COLOURS[gives] ?? 0xd8c9a0, width: 0.9, alpha: 0.9 });
+      g.circle(from.x, from.y, 1.5).fill({ color: SUPPLY_COLOURS[gives] ?? 0xd8c9a0, alpha: 0.9 });
+    }
   }
 
   /** Which warband the player has picked up, so it can be marked on the ground. */
@@ -332,9 +383,17 @@ export class WorldView {
       this.problemCache = this.world.problems();
     }
 
+    // Supply moves on the supply clock, not per frame.
+    const supplyTick = this.world.ticks >> 3;
+    if (this.showSupply && supplyTick !== this.supplyVersion) {
+      this.supplyVersion = supplyTick;
+      this.drawSupply();
+    }
+
     this.drawPeople();
 
     this.shadows.visible = this.mode === 'iso';
+    this.supply.visible = this.showSupply;
     this.border.visible = this.showBorders;
     this.overlay.visible = this.showOverlay;
     this.streets.visible = this.showStreets;
@@ -799,6 +858,57 @@ export class WorldView {
    * The two fields stay apart because they differ in *edge* rather than hue:
    * culture never draws a line, and the military never draws a gradient.
    */
+  /**
+   * Who is feeding whom, drawn as a flow between the two buildings.
+   *
+   * This is `design/00` Axis 2's "free legibility win", and it is the only
+   * interface the resource tree gets: **thickness is throughput**, so a starved
+   * chain is a visibly thin stream and a mill being drunk by three foundries is
+   * three thin lines rather than one fat one. No numbers, no panel, and the one
+   * thing you actually have to see — whether two catchments overlap — is the
+   * presence or absence of a line.
+   *
+   * Drawn as a slack curve rather than a straight line, because a dozen straight
+   * lines between clustered buildings reads as a wireframe. The sag also makes
+   * two links between the same pair distinguishable.
+   */
+  private drawSupply(): void {
+    const g = this.supply;
+    g.clear();
+
+    const t = this.world.terrain;
+    for (const link of this.world.supply.links) {
+      const colour = SUPPLY_COLOURS[link.resource] ?? 0xd8c9a0;
+      // Throughput, on a scale that keeps a trickle visible and a torrent sane.
+      const width = Math.min(2.2, 0.24 + Math.sqrt(link.flow) * 1.3);
+
+      const mx = (link.from.x + link.to.x) / 2;
+      const my = (link.from.y + link.to.y) / 2;
+      const span = Math.hypot(link.to.x - link.from.x, link.to.y - link.from.y);
+      // Lifted off the ground at the midpoint, so the line reads as a thing
+      // travelling between two buildings rather than as a fence between them.
+      const lift = Math.min(9, 2 + span * 0.03);
+
+      const a = this.project(link.from.x, link.from.y, t.heightAt(link.from.x, link.from.y) + 2.2);
+      const b = this.project(mx, my, t.heightAt(mx, my) + lift);
+      const c = this.project(link.to.x, link.to.y, t.heightAt(link.to.x, link.to.y) + 2.2);
+
+      const pts: number[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const u = i / 12;
+        const v = 1 - u;
+        pts.push(
+          v * v * a.x + 2 * v * u * b.x + u * u * c.x,
+          v * v * a.y + 2 * v * u * b.y + u * u * c.y,
+        );
+      }
+      g.poly(pts, false).stroke({ color: colour, width, alpha: 0.85 });
+
+      // A mark at the receiving end, so which way it flows is not a guess.
+      g.circle(c.x, c.y, width * 1.4).fill({ color: colour, alpha: 0.9 });
+    }
+  }
+
   private drawBorders(): void {
     const g = this.border;
     g.clear();
@@ -1535,7 +1645,7 @@ export class WorldView {
    * Colour carries the reason, so the states are distinguishable without a
    * legend: **amber** nobody works here, **grey** nothing here to work, **red**
    * this ground is not really ours, **blue** this household cannot reach
-   * something it needs. It bobs, because a static icon over a static town
+   * something it needs, **violet** this works cannot get an input. It bobs, because a static icon over a static town
    * disappears into the roofline within about ten seconds.
    *
    * The blue one is drawn smaller and dimmer than the rest on purpose. A works
@@ -1551,6 +1661,8 @@ export class WorldView {
   ): void {
     const b = problem.building;
     const colour = PROBLEM_COLOURS[problem.kind];
+    // Only the household one is drawn small: a starved foundry is one broken
+    // thing, like an unstaffed mill, and should read as loudly.
     const soft = problem.kind === 'unserved';
     const scale = soft ? 0.62 : 1;
     const alpha = soft ? 0.72 : 0.95;
@@ -2280,6 +2392,7 @@ const PROBLEM_COLOURS: Record<ProblemKind, number> = {
   barren: 0x9aa0a6,
   unrest: 0xd0503f,
   unserved: 0x5f9bc4,
+  starved: 0xb06fc4,
 };
 
 /** Wet oak and iron banding, for a mill wheel. */

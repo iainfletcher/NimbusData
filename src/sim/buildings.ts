@@ -22,8 +22,14 @@ const TYPES: BuildingType[] = [
     width: 18,
     depth: 14,
     emissions: [{ character: 'industrious', strength: 1.6, radius: 110 }],
-    cost: { timber: 30, stone: 45, iron: 10 },
+    cost: { timber: 30, stone: 45 },
     jobs: 12,
+    // The one building whose entire job is to *combine* two things, and which
+    // until now produced nothing at all. Ore sits in a few scarce seams and wood
+    // grows somewhere else, so siting a foundry is the problem of finding ground
+    // where two catchments overlap — or laying the street that makes them.
+    consumes: { ore: 0.5, timber: 0.3 },
+    produces: { resource: 'iron', rate: 0.26 },
   },
   {
     id: 'tannery',
@@ -48,6 +54,7 @@ const TYPES: BuildingType[] = [
     cost: { timber: 16, stone: 8 },
     jobs: 5,
     harvests: 'timber',
+    produces: { resource: 'timber', rate: 0.0022 },
   },
   {
     id: 'quarry',
@@ -59,6 +66,7 @@ const TYPES: BuildingType[] = [
     cost: { timber: 14 },
     jobs: 8,
     harvests: 'stone',
+    produces: { resource: 'stone', rate: 0.0026 },
   },
   {
     id: 'workshop',
@@ -69,6 +77,11 @@ const TYPES: BuildingType[] = [
     emissions: [{ character: 'industrious', strength: 0.5, radius: 45 }],
     cost: { timber: 14, stone: 6 },
     jobs: 3,
+    // Iron into tools — the end of the metal chain and the thing the landmarks
+    // are built with. Deliberately small and cheap: you want several, spread
+    // through the town, rather than one optimally placed one.
+    consumes: { iron: 0.1, timber: 0.2 },
+    produces: { resource: 'tools', rate: 0.085 },
   },
   {
     id: 'market',
@@ -80,7 +93,7 @@ const TYPES: BuildingType[] = [
       { character: 'mercantile', strength: 1.5, radius: 120 },
       { character: 'raucous', strength: 0.3, radius: 60 },
     ],
-    cost: { timber: 26, stone: 34 },
+    cost: { timber: 26, stone: 34, tools: 8 },
     jobs: 6,
     serves: ['market'],
   },
@@ -104,6 +117,7 @@ const TYPES: BuildingType[] = [
     emissions: [{ character: 'rustic', strength: 1.0, radius: 80 }],
     cost: { timber: 24, stone: 20 },
     jobs: 4,
+    produces: { resource: 'food', rate: 0.09 },
   },
   {
     id: 'farm',
@@ -115,6 +129,7 @@ const TYPES: BuildingType[] = [
     cost: { timber: 20, stone: 6 },
     jobs: 9,
     harvests: 'arable',
+    produces: { resource: 'food', rate: 0.0062 },
   },
 
   {
@@ -127,6 +142,10 @@ const TYPES: BuildingType[] = [
     cost: { timber: 34, stone: 22 },
     jobs: 14,
     harvests: 'ore',
+    // Ore, not iron. A mine digs rock out of the ground; turning it into metal
+    // is somebody else's building, and making that somebody else exist is the
+    // whole point of the chain.
+    produces: { resource: 'ore', rate: 0.0075 },
   },
 
   // ---- Civic -------------------------------------------------------------
@@ -147,7 +166,7 @@ const TYPES: BuildingType[] = [
     width: 16,
     depth: 26,
     emissions: [{ character: 'devout', strength: 1.7, radius: 130 }],
-    cost: { timber: 30, stone: 90 },
+    cost: { timber: 30, stone: 90, tools: 12 },
     serves: ['faith'],
   },
   {
@@ -199,7 +218,7 @@ const TYPES: BuildingType[] = [
       { character: 'mercantile', strength: 1.1, radius: 100 },
       { character: 'devout', strength: 0.2, radius: 40 },
     ],
-    cost: { timber: 30, stone: 40 },
+    cost: { timber: 30, stone: 40, tools: 10 },
   },
   {
     id: 'green',
@@ -235,7 +254,7 @@ const TYPES: BuildingType[] = [
     width: 8,
     depth: 8,
     emissions: [{ character: 'martial', strength: 0.9, radius: 75 }],
-    cost: { timber: 18, stone: 40, iron: 15 },
+    cost: { timber: 18, stone: 40, iron: 15, tools: 6 },
     garrison: { strength: 0.85, reach: 130, upkeep: 0.05 },
   },
   {
@@ -245,7 +264,7 @@ const TYPES: BuildingType[] = [
     width: 20,
     depth: 20,
     emissions: [{ character: 'martial', strength: 1.8, radius: 140 }],
-    cost: { timber: 45, stone: 130, iron: 60 },
+    cost: { timber: 45, stone: 130, iron: 60, tools: 20 },
     garrison: { strength: 1.5, reach: 235, upkeep: 0.16, musters: true },
   },
 

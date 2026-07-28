@@ -57,7 +57,7 @@ export const AGES: Age[] = [
     blurb: 'A few families, a field and somewhere to draw water.',
     demands: ['water'],
     unlocks: [
-      'cottage', 'farm', 'well', 'sawmill', 'quarry', 'workshop',
+      'cottage', 'farm', 'well', 'sawmill', 'quarry',
       'watermill', 'green', 'orchard',
     ],
     requires: {
@@ -69,9 +69,15 @@ export const AGES: Age[] = [
   {
     id: 'village',
     name: 'Village',
-    blurb: 'A church, and enough people to fill it.',
+    blurb: 'A church, a forge, and enough people to fill both.',
     demands: ['water', 'faith'],
-    unlocks: ['chapel', 'almshouse', 'alehouse', 'tannery', 'warehouse', 'watchtower'],
+    // The age that learns to work metal, which is why the mine, the foundry and
+    // the workshop arrive together with the watchtower they make possible. A
+    // hamlet that could smelt would have nothing to smelt *for*.
+    unlocks: [
+      'chapel', 'almshouse', 'alehouse', 'tannery', 'warehouse',
+      'mine', 'foundry', 'workshop', 'watchtower',
+    ],
     requires: {
       population: 110,
       buildings: { chapel: 1 },
@@ -83,7 +89,7 @@ export const AGES: Age[] = [
     name: 'Market Town',
     blurb: 'A market cross, an alehouse, and trade worth defending.',
     demands: ['water', 'faith', 'market', 'ale'],
-    unlocks: ['market', 'tavern', 'church', 'guildhall', 'merchant_house', 'mine'],
+    unlocks: ['market', 'tavern', 'church', 'guildhall', 'merchant_house'],
     requires: {
       population: 240,
       buildings: { market: 1, tavern: 1 },
@@ -93,9 +99,9 @@ export const AGES: Age[] = [
   {
     id: 'borough',
     name: 'Borough',
-    blurb: 'Walls, a foundry, and a name that carries.',
+    blurb: 'Walls, a garrison, and a name that carries.',
     demands: ['water', 'faith', 'market', 'ale'],
-    unlocks: ['foundry', 'keep'],
+    unlocks: ['keep'],
     requires: {},
   },
 ];

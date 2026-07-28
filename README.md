@@ -76,8 +76,7 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Cultural pressure and a living border between rival settlements
 
 - Planned fabric: crescent, square and grid layouts, rotatable, priced in stone
-- A light resource layer — timber, stone and food, all produced from what the
-  surrounding land actually holds
+- A resource layer produced from what the surrounding land actually holds
 
 - A seasonal clock — autumn is the harvest, winter takes more than it gives
 - A rival that actually grows, building toward the frontier and reinforcing its
@@ -102,16 +101,31 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - **Jobs and workers.** A works yields what its land holds × how well it is
   staffed, and people only walk so far — so siting is now "find the resource
   *and* house the people who will work it"
-- **Iron**, smelted from scarce ore seams and the only thing fortification is
-  built from, which is the join between the resource game and the territory game
-- Build buttons that show cost, jobs and affordability, and a **site preview**
-  that draws the catchment and the walk-to-work before you pay
+- **A resource tree that combines inputs, fed by adjacency.** A works that
+  combines things is supplied by *what stands near it*, never from the barn: a
+  mine digs ore, a foundry smelts ore + timber into iron, a workshop turns iron
+  + timber into tools. Ore sits in a few scarce seams and wood grows elsewhere,
+  so siting a foundry means finding where two catchments overlap — or laying the
+  street that makes them. **150 metres across country, 300 along a street**, so
+  roads are finally worth something economically
+- **Tools are what a landmark is built with** — a church, a market cross, a
+  guildhall, a watchtower and a keep all want them and there is no other source,
+  so the town's landmarks are literally built out of the chain running through it
+- Self-throttling with nothing to compute: two foundries on one mine halve each
+  other, and what a foundry draws off a mill never reaches your stores
+- A **Supply** overlay that draws every feed as a flow, coloured by what moves
+  and thick in proportion to how much — the whole interface for the tree, with
+  no numbers in it. The site preview draws the same thing before you pay
+- Build buttons that show cost, jobs, what a building serves and affordability,
+  and a **site preview** that draws the catchment, the walk-to-work and the
+  supply reach before you pay
 - **The growth loop.** Housing is a ceiling, not a population: people arrive when
   there is room and food in the barn, and leave when there is not. A full town's
   readout says *122/122 — no housing*, which is the game asking for something
 - **Problems drawn on the map**, on the building that has them — amber for nobody
   works here, grey for nothing here to work, red for ground that is not ours, blue
-  for a household that cannot reach something it needs
+  for a household that cannot reach something it needs, violet for a works that
+  cannot get an input
 
 - **Household needs, answered by distance.** Water, a church, a market, an
   alehouse — each met if the thing that meets it is within walking distance, with
