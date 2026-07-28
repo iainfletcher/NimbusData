@@ -2,7 +2,7 @@ import { type Fabric, routeOver } from './fabric';
 import type { Need } from './needs';
 import { makeRng } from './rng';
 import { walkRoad, type Road } from './roads';
-import type { Vec2 } from './types';
+import type { Resource, Vec2 } from './types';
 
 /**
  * The people in the streets, and what they are doing.
@@ -29,23 +29,45 @@ import type { Vec2 } from './types';
  * - A quarter with no well sends nobody down to the river.
  * - An empty town has empty streets, because the crowd is sized by *population*
  *   rather than by how many buildings you have put up.
+ * - **A working chain has ore walking to the foundry**, on a road, on a man's
+ *   back — which is the sentence `00` Axis 2 is built around: *put the sawmill
+ *   near the forest, watch the timber walk.*
+ *
+ * ### The carriers, and why they are still decoration
+ *
+ * A haul is a journey along a link `supply.ts` has already resolved. The goods
+ * have *already moved* — adjacency decided that — and the carrier is a
+ * rendering of it. He cannot jam, cannot queue, cannot be late, and cannot fail
+ * to arrive. Kill every carrier in the town and the iron still comes out at the
+ * same rate. That is precisely the split `00` Axis 2 asks for, and it is why
+ * this is the pleasure of Settlers without the job of Settlers.
  *
  * ### Where the smarts stop, deliberately
  *
- * They do not queue, avoid each other, pick between two markets by how busy it
- * is, or carry anything that exists. All of that is simulation nobody can see
- * the output of, and it fails the same test everything else in this design is
- * held to. What they do is: leave home, go to the one place they were sent,
+ * They do not queue, avoid each other, pick between two markets by how busy one
+ * is, or carry goods that exist as objects. All of that is simulation nobody can
+ * see the output of, and it fails the same test everything else in this design
+ * is held to. What they do is: leave home, go to the one place they were sent,
  * stop there a while, and come back.
  */
 
 /** What somebody is out doing. Drawn, so it has to be worth telling apart. */
-export type ErrandKind = 'work' | Need | 'wander';
+export type ErrandKind = 'work' | 'haul' | Need | 'wander';
 
 export interface Journey {
   from: Vec2;
   to: Vec2;
   kind: ErrandKind;
+  /**
+   * What is being carried, for a haul.
+   *
+   * This is the sentence `design/00` Axis 2 is built around — *"put the sawmill
+   * near the forest, watch the timber walk"* — and it is the reason the chain
+   * needed people rather than only lines. The carrier changes nothing: the
+   * supply is resolved by adjacency, the goods have already moved, and the
+   * figure is a *rendering* of that. It cannot jam, queue or arrive late.
+   */
+  carries?: Resource;
 }
 
 export interface Person {
@@ -63,6 +85,8 @@ export interface Person {
   phase: number;
   /** What they are out doing, for the figure that gets drawn. */
   errand: ErrandKind;
+  /** What is on their back right now. Null on the way back — hauls run empty. */
+  load: Resource | null;
   /** True on the way there, false on the way back. */
   outbound: boolean;
   /** Seconds left standing still. Nobody turns straight round at the door. */
@@ -192,6 +216,11 @@ export class Crowd {
     person.journey = this.journeyFor(i);
     const errand = person.journey >= 0 ? this.journeys[person.journey] : null;
     person.errand = errand ? errand.kind : 'wander';
+    // The load moves with the assignment for the same reason the label does:
+    // the figure is drawn from it, and somebody re-tasked onto a haul while
+    // standing at a door would otherwise be drawn empty-handed until they next
+    // set out.
+    person.load = errand && person.outbound ? errand.carries ?? null : null;
 
     // Changing which errand somebody runs can wait until they get home; changing
     // whether they have one at all cannot. A town starts empty, so its whole
@@ -246,6 +275,7 @@ export class Crowd {
         tint: Math.floor(this.rng() * 6),
         phase: this.rng() * Math.PI * 2,
         errand: errand ? errand.kind : 'wander',
+        load: errand?.carries ?? null,
         outbound: true,
         // No pause before the *first* departure. Somebody who has just come out
         // has to get on the road at once and be scattered along it, or a town
@@ -276,6 +306,7 @@ export class Crowd {
     person.along = 0;
     person.pos = { ...route[person.leg] };
     person.errand = 'wander';
+    person.load = null;
   }
 
   /**
@@ -381,9 +412,12 @@ export class Crowd {
     }
 
     // The errand is the same in both directions: somebody walking home from the
-    // well is still fetching water, and is still carrying the pail.
+    // well is still fetching water, and is still carrying the pail. A *haul* is
+    // the exception — a carrier walks back empty, which is most of what makes a
+    // stream of them read as a direction rather than as milling about.
     person.route = person.outbound ? route : [...route].reverse();
     person.errand = journey.kind;
+    person.load = person.outbound ? journey.carries ?? null : null;
     person.walking = person.journey;
     person.leg = 0;
     person.along = 0;
@@ -433,6 +467,7 @@ export class Crowd {
   private wander(person: Person): boolean {
     if (this.routes.length === 0) return false;
     person.errand = 'wander';
+    person.load = null;
 
     let best: Vec2[] | null = null;
     let bestFromStart = true;

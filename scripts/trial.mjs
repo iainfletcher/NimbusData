@@ -1605,6 +1605,72 @@ claim(
   },
 );
 
+claim(
+  'A working chain puts carriers on the road, and killing them changes nothing',
+  'design/00 Axis 2 — structure is adjacency, carriers are decoration',
+  (note) => {
+    // Two identical worlds from the same seed: one keeps its carriers, one has
+    // every last one deleted.
+    const build = () => {
+      const w = freshWorld();
+      w.rivalActive = false;
+      let best = null;
+      let bestValue = 0;
+      for (let cy = 8; cy < 248; cy += 2) {
+        for (let cx = 8; cx < 248; cx += 2) {
+          const v = w.land.ore[cy * 256 + cx];
+          if (v > bestValue) {
+            bestValue = v;
+            best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+          }
+        }
+      }
+      const mine = staffedWorks(w, 'mine', best);
+      const mill = staffedWorks(w, 'sawmill', { x: best.x + 74, y: best.y + 44 });
+      const foundry = staffedWorks(w, 'foundry', { x: best.x + 40, y: best.y + 22 });
+      if (!mine || !mill || !foundry) return null;
+      serveNeeds(w, foundry);
+      run(w, 500);
+      w.rebuildFabric();
+      run(w, 40);
+      return w;
+    };
+
+    const world = build();
+    if (!world) return note('could not site the chain'), false;
+
+    const hauls = world.crowd.people.filter((p) => p.errand === 'haul');
+    const loads = new Set(hauls.map((p) => p.load).filter(Boolean));
+
+    // The whole claim: the goods have already moved by adjacency, so the figures
+    // carrying them are a picture of that and nothing else.
+    //
+    // Measured against a *control that runs the same ticks*, not against this
+    // world's own earlier rate. The first version of this trial compared before
+    // and after and reported a 45% drop — which was the season turning, not the
+    // carriers. A run of sixty ticks is not a no-op in a game with a calendar
+    // in it.
+    const twin = build();
+    if (!twin) return note('could not build the control'), false;
+    world.crowd.people.length = 0;
+    run(world, 60);
+    run(twin, 60);
+
+    const without = world.economy.rates.iron;
+    const with_ = twin.economy.rates.iron;
+    note(
+      `${hauls.length} carrier(s) carrying ${[...loads].sort().join(', ') || 'nothing'}; ` +
+        `iron ${with_.toFixed(4)}/tick with them, ${without.toFixed(4)} with every one deleted`,
+    );
+    return (
+      hauls.length > 0 &&
+      loads.has('ore') &&
+      with_ > 0 &&
+      Math.abs(without - with_) < 1e-9
+    );
+  },
+);
+
 console.log('');
 if (failures > 0) {
   console.log(`${failures} trial(s) did not hold.\n`);

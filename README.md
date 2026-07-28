@@ -116,6 +116,12 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - A **Supply** overlay that draws every feed as a flow, coloured by what moves
   and thick in proportion to how much — the whole interface for the tree, with
   no numbers in it. The site preview draws the same thing before you pay
+- **Carriers**, which is the sentence the whole design was written around: *put
+  the sawmill near the forest, watch the timber walk*. A man walks the ore from
+  the mine to the foundry, along the real streets, with the load on his back and
+  coloured by what it is — and walks back empty. Busier links carry more of
+  them. They change nothing: delete every carrier in the town and the iron comes
+  out at exactly the same rate
 - Build buttons that show cost, jobs, what a building serves and affordability,
   and a **site preview** that draws the catchment, the walk-to-work and the
   supply reach before you pay
@@ -157,6 +163,9 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval
 era — though the four ages inside it are the arc that era progression will hang
 on (`design/03` §6).
+
+Hover any building to read how it is doing in words — *Foundry · half fed ·
+fully staffed* — rather than in numbers.
 
 Press **Seed test town**, then **Character** to see the field and **Plan** to read
 the street layout.

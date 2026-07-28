@@ -249,6 +249,32 @@ A starved chain is a visibly thin stream and a missing chain is a missing line.
 The site preview draws the same thing before you pay, so placing a foundry is
 "put it where two of these light up".
 
+#### And then the carriers, which is the sentence this whole axis was written for
+
+> *"You keep the entire pleasure of Settlers — put the sawmill near the forest,
+> watch the timber walk — and you delete every failure mode that made it a job."*
+
+That is now literally true. A haul is a journey along a link the supply pass has
+already resolved, walked by a real figure over the real street network with the
+goods on his back, coloured by what they are: rust for ore, green for timber,
+grey-blue for iron. Busier links get more carriers, which is the overlay's
+"thickness is throughput" rule expressed in *people* — and it is the version you
+can read without turning an overlay on at all.
+
+**The split holds exactly.** The goods have already moved; adjacency decided
+that. The carrier is a rendering of a decision, not a participant in it. He
+cannot jam, queue, arrive late, or fail. Trialled by building the same town
+twice from one seed, deleting every carrier in one of them, and running both:
+**0.1387 iron/tick either way, to nine decimal places.**
+
+That trial is also where the harness caught me out again. The first version
+compared the world's iron rate before and after deleting the carriers and
+reported a 45% drop — which was *the season turning* over the sixty ticks in
+between, not the carriers. A run of sixty ticks is not a no-op in a game with a
+calendar in it, and a before/after comparison in a living world is not a
+controlled experiment. The fix is the one this file keeps relearning: build the
+control, run both arms the same number of ticks, and compare those.
+
 #### Built — and the second half of "decoration = carriers" was doing nothing
 
 The rule survives intact, and it turns out it was being applied too literally.

@@ -1232,6 +1232,22 @@ export class WorldView {
 
     g.circle(head.x, head.y, 0.5).fill(SKIN);
 
+    // A load on the back, if they are hauling.
+    //
+    // This is the one that matters, and it is what `design/00` Axis 2 means by
+    // "watch the timber walk": a man on the road between the mine and the
+    // foundry with rust-coloured ore on his back *is* the chain, seen. It is
+    // drawn wider and higher than an errand's prop, because a load is a burden
+    // and should read as one from a distance.
+    if (person.load) {
+      const colour = SUPPLY_COLOURS[person.load] ?? 0xd8c9a0;
+      const pack = this.project(person.pos.x, person.pos.y, ground + 2.15 + bob);
+      g.rect(pack.x - 0.62, pack.y - 0.42, 1.24, 0.72)
+        .fill(colour)
+        .stroke({ color: 0x2a241c, width: 0.14, alpha: 0.55 });
+      return;
+    }
+
     // What they are out for, carried in one hand.
     //
     // The tool goes over the shoulder and the pail hangs low, which is the whole

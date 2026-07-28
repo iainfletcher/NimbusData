@@ -91,6 +91,7 @@ export class World {
   readonly supply = new Supply();
   private needsCooldown = 0;
   private supplyCooldown = 0;
+  private lastLinkCount = 0;
   private labourCooldown = 0;
   private quarterCooldown = 0;
   private wasHungry = false;
@@ -501,6 +502,15 @@ export class World {
       this.supply.update(this.buildings, this.roads, (b) =>
         this.economy.outputOf(b, this.land, this.terrain, this.territory, this.labour, this.supply),
       );
+      // A chain that starts or stops flowing has to put carriers on the road or
+      // take them off it, and that can happen without anything being built — a
+      // works finally getting staffed is enough. Gated on the *count* so the
+      // crowd is not re-planned every ten ticks for a flow that shifted by a
+      // hundredth.
+      if (this.supply.links.length !== this.lastLinkCount) {
+        this.lastLinkCount = this.supply.links.length;
+        this.resetCrowd();
+      }
     }
 
     this.economy.update(
@@ -994,6 +1004,27 @@ export class World {
    */
   private resetCrowd(): void {
     const journeys: Journey[] = [];
+
+    // Hauls first, so that a town with more errands than people still has
+    // somebody carrying the ore. A chain with nobody on it looks broken even
+    // when it is working, and it is the one journey whose *absence* is the
+    // clearest possible statement that a works is not being fed.
+    //
+    // Busier links get more carriers, which is the overlay's "thickness is
+    // throughput" rule expressed in people rather than in line width — and it is
+    // the version of it you can read without turning an overlay on.
+    for (const link of this.supply.links) {
+      const carriers = Math.min(4, 1 + Math.round(link.flow * 6));
+      for (let i = 0; i < carriers; i++) {
+        journeys.push({
+          from: link.from,
+          to: link.to,
+          kind: 'haul',
+          carries: link.resource,
+        });
+      }
+    }
+
     for (const c of this.labour.commutes) {
       journeys.push({ from: c.from, to: c.to, kind: 'work' });
     }

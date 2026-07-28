@@ -850,7 +850,7 @@ async function main(): Promise<void> {
     rStreet.textContent = road?.road.name ?? '—';
 
     const hit = world.buildingAt(w.x, w.y);
-    rBuilding.textContent = hit ? buildingType(hit.typeId).name : '—';
+    rBuilding.textContent = hit ? describe(hit) : '—';
   }
 
   /**
@@ -903,6 +903,33 @@ async function main(): Promise<void> {
       .map((s) => `<span>${s}</span>`)
       .join('');
     goalNeeds.innerHTML = wants.map((s) => `<span>${s}</span>`).join('');
+  }
+
+  /**
+   * A building, and how it is doing — in words.
+   *
+   * The one line that says why a works is not working, on the building the
+   * cursor is over. Bands rather than percentages on purpose: "half fed" is
+   * what you need to know and "48% fed" is a number to be optimised, which is
+   * the difference this whole design turns on. The map already tells you
+   * *which* building is in trouble; this says what kind of trouble.
+   */
+  function describe(b: ReturnType<typeof world.buildingAt> & object): string {
+    const type = buildingType(b.typeId);
+    const band = (v: number) =>
+      v >= 0.99 ? 'fully' : v >= 0.66 ? 'mostly' : v >= 0.34 ? 'half' : v > 0.02 ? 'barely' : 'not';
+
+    const bits: string[] = [];
+    if (type.consumes) bits.push(`${band(world.supply.feedOf(b))} fed`);
+    if (type.jobs) bits.push(`${band(world.labour.staffingOf(b))} staffed`);
+    if (type.houses) {
+      const short = world.needs.missing.get(b.id);
+      bits.push(short?.length ? `wants ${short.map((n) => NEED_SHORT[n]).join(', ')}` : 'well served');
+    }
+    const ground = world.territory.standingAt(b.pos.x, b.pos.y);
+    if (ground.standing === 'held') bits.push('on sullen ground');
+
+    return bits.length ? `${type.name} · ${bits.join(' · ')}` : type.name;
   }
 
   // ---- Quarter names, drawn on the map ------------------------------------
