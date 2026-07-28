@@ -76,6 +76,72 @@ facade is now a dozen panels rather than a grid of identical rectangles. Worth
 it, and there is obvious headroom (panels could be skipped below a zoom
 threshold, which is the standard answer).
 
+### ✅ Built, second half — the mass grammar (`massing.ts`)
+
+The half deferred above is now built, and deferring it turned out to have been
+the wrong call. "That is where the visible variety lives" was true of *facades*
+and false of *buildings*: a street of boxes with well-derived walls is still a
+street of boxes. The single biggest thing holding the look back was that every
+building in the game was one rectangular prism with one roof on it, with its
+proportions read from a table.
+
+A building is now **derived into volumes** from a vocabulary of nine:
+
+> main range · cross-wing · lean-to · jetty · porch · chancel · turret ·
+> stack · veranda · plinth
+
+and composed by the same axis the facade grammar uses:
+
+> **Type says what a building is. Character says what it is built like. The
+> grammar composes it out of volumes.**
+
+So a merchant's house jetties its upper storey out over the street, a farmstead
+grows a lean-to along its long wall and a byre at right angles, a chapel gets a
+lower chancel, industry gets an annexe and a flue, and a keep is crenellated with
+a corner turret — from eight rules, none of them written per building type.
+Adding a type still costs a catalogue entry and nothing in the grammar.
+
+**A roof form had to be added:** `lean`, a mono-pitch. It is what a lean-to, an
+outshut and a veranda canopy all are, and it is the form that makes a building
+look *added to over time* rather than built in one go. Nothing else in the
+vocabulary does that.
+
+**It lives in `render`, not `sim`,** and that is deliberate. Massing is
+appearance: footprints, collision and placement all still use the catalogue's
+flat width × depth, so a jetty overhangs visually and owns no ground. The
+layering rule holds and the simulation stays engine-agnostic.
+
+**Cost paid:** render CPU 3.73ms → 4.36ms on a matched 96-building scene,
+measured against the previous commit built from a worktree. About 17% for a
+large multiple of the geometry, which is the right trade.
+
+### The lighting change that mattered as much as the grammar
+
+Worth recording separately, because it was cheaper than any algorithm here and
+did more for the picture than most of them:
+
+> **A sunlit face goes warm. A shaded face does not go dark, it goes *blue* —
+> because the only light reaching it is the sky.**
+
+Every face in the game used to be shaded by mixing toward white or black. That is
+greyscale shading, and it drifts the whole scene toward grey at both ends. Faces
+now mix toward a warm sun colour or a cool sky colour instead, lit by their true
+3D normal — key light plus hemispherical fill, for two lerps and no extra draw
+calls. Terrain goes through the same function, so a hillside turning away from
+the sun and a wall turning away from it agree, and the town sits *in* the
+landscape rather than on top of it.
+
+Two tuning findings, both the opposite of the obvious:
+
+1. **Contrast must come from the shadow side, not the lit side.** A strong key
+   washed every pale roof to cream — thatch already at `0xc0a765` mixed a third
+   of the way toward a light warm colour has nowhere left to go. The key is now
+   light (0.15) and the fill heavy (0.42), which is also how it works outdoors.
+2. **Terrain relief must be measured against level ground, not against zero.**
+   Feeding the raw lambert in tinted the entire map warm, because flat ground
+   faces a sun 38° up and therefore reads as strongly lit — true, and visually
+   useless, since it leaves no headroom for an actual hillside.
+
 ### 2. Straight skeleton
 
 **Where from:** Aichholzer & Aurenhammer, 1995. The canonical application is

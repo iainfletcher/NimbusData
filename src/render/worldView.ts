@@ -19,19 +19,24 @@ import {
 import { WORLD_SIZE } from '../sim';
 import { ROAD_HALF_WIDTH, walkRoad } from '../sim';
 import { Camera } from './camera';
-import { appearanceOf, TIMBER_FRAME, type Appearance } from './appearance';
+import { appearanceOf, TIMBER_FRAME } from './appearance';
 import { deriveFacade, type Panel } from './grammar';
 import { drawDecorItem, type DecorContext } from './decor';
 import {
   BANNER_COLOURS,
   CHARACTER_COLOURS,
   CONTESTED_COLOUR,
+  FLAT_LAMBERT,
   FRONTIER_COLOUR,
+  SUN,
   TERRITORY_COLOURS,
+  lambertOf,
+  lit,
   shade,
   terrainColour,
   waterColour,
 } from './palette';
+import { massOf, type Block } from './massing';
 import { projectionFor, type Point, type Projection, type ViewMode } from './projection';
 
 /** Terrain is drawn every Nth cell — 4m cells are finer than the eye needs here. */
@@ -45,12 +50,6 @@ const PATH = 0xa89878;
 const ROAD = 0x8d8578;
 const ROAD_EDGE = 0x736c62;
 
-/**
- * One sun, used consistently for terrain relief, wall shading and cast shadows.
- * Low in the north-west, which is the classic isometric light and keeps the
- * shadows falling away from the camera rather than across the thing casting them.
- */
-const SUN = { x: 0.58, y: 0.81 };
 /** Metres of shadow per metre of height. */
 const SHADOW_LENGTH = 0.85;
 const SHADOW_COLOUR = 0x1d2a1c;
@@ -259,16 +258,26 @@ export class WorldView {
         const h11 = t.heightAtCell(cx + step, cy + step);
         const avg = (h00 + h10 + h01 + h11) / 4;
 
-        // Lambert-ish shading against the same sun the shadows use, which is
-        // what makes the landform read as landform rather than as a colour ramp.
+        // Shading against the same sun everything else uses, which is what makes
+        // the landform read as landform rather than as a colour ramp — and, now
+        // that it goes through `lit`, puts the ground on the same warm key and
+        // cool fill as the buildings standing on it. A hillside turning away
+        // from the sun and a wall turning away from it agree, so the town sits
+        // in the landscape instead of on top of it.
         const gx = ((h10 + h11) - (h00 + h01)) / (2 * s);
         const gy = ((h01 + h11) - (h00 + h10)) / (2 * s);
-        const lit = (gx * SUN.x + gy * SUN.y) / Math.sqrt(1 + gx * gx + gy * gy);
-        const relief = Math.max(-0.42, Math.min(0.3, -lit * 0.75));
+
+        // Measured *against level ground*, not against zero. Feeding the raw
+        // lambert in tinted the entire map warm, because flat ground faces a sun
+        // 38° up and therefore reads as strongly lit — technically true and
+        // visually useless, since it left no headroom for an actual hillside.
+        // Centring on the flat case keeps a meadow its own green and spends the
+        // whole range on relief.
+        const lambert = (lambertOf(-gx, -gy, 1) - FLAT_LAMBERT) * 2.4;
 
         // Break up the flat green: patchy grazing, drier ground, bare scrapes.
-        const patch = (fbm(wx / 55, wy / 55, this.world.seed ^ 0xa17, 2) - 0.5) * 0.2;
-        const colour = shade(terrainColour(avg), relief + patch);
+        const patch = (fbm(wx / 62, wy / 62, this.world.seed ^ 0xa17, 2) - 0.5) * 0.15;
+        const colour = lit(shade(terrainColour(avg), patch), lambert);
 
         const p00 = this.project(wx, wy, h00);
         const p10 = this.project(wx + s, wy, h10);
@@ -963,33 +972,125 @@ export class WorldView {
    * box reads as a crate, and roof material is how you tell slate from thatch at
    * a distance.
    */
+  /**
+   * A building is drawn by **deriving it into volumes** and drawing each one
+   * (`massing.ts`), rather than as one box with a hat.
+   *
+   * Everything below is generic: it knows about a block's rectangle, its base
+   * height and its roof form, and nothing at all about what kind of building it
+   * belongs to. A merchant's jetty, a farm's lean-to, a church's chancel and a
+   * keep's turret are all the same code path with different numbers, which is
+   * what makes adding a building type cost a catalogue entry and nothing here.
+   */
   private drawBuilding(g: Graphics, b: Building, alpha: number, tint?: number): void {
     const look = appearanceOf(b.typeId);
-    // Weathering: no two buildings in a row are quite the same shade or height.
+    // Weathering: no two buildings in a row are quite the same shade.
     const vw = (this.jitter(b.id, 1) - 0.5) * 0.14;
     const vr = (this.jitter(b.id, 2) - 0.5) * 0.16;
-    const vh = 0.93 + this.jitter(b.id, 3) * 0.14;
     const wall = tint ?? shade(look.wall, vw);
     const roof = tint ?? shade(look.roof, vr);
     const ground = this.world.terrain.heightAt(b.pos.x, b.pos.y);
-    const corners = this.footprint(b);
+    const blocks = massOf(b.typeId, b.id);
 
     if (this.mode === 'plan') {
-      const pts: number[] = [];
-      for (const c of corners) {
-        const s = this.project(c.x, c.y, ground);
-        pts.push(s.x, s.y);
+      // In plan the massing shows as an outline rather than a rectangle, which
+      // is most of what makes a plan view read as a town and not a spreadsheet.
+      for (const block of blocks) {
+        if (block.stack) continue;
+        const pts: number[] = [];
+        for (const c of this.blockCorners(b, block, block.overhang)) {
+          const s = this.project(c.x, c.y, ground);
+          pts.push(s.x, s.y);
+        }
+        g.poly(pts).fill({ color: block.form === 'flat' ? wall : roof, alpha });
       }
-      g.poly(pts).fill({ color: look.form === 'flat' ? wall : roof, alpha });
       return;
     }
 
-    const eavesHeight = look.form === 'flat' ? look.eaves : look.eaves * vh;
-    const eaves = ground + eavesHeight;
-    const base = corners.map((c) => this.project(c.x, c.y, ground));
+    // Painter's order: further back first, and within the same footprint the
+    // lower storey before the one jettied over it.
+    interface BlockOrder { block: Block; depth: number }
+    const order: BlockOrder[] = blocks.map((block) => {
+      const c = this.local(b, block.u, block.v);
+      return { block, depth: c.x + c.y };
+    })
+      .sort((p: BlockOrder, q: BlockOrder) => p.depth - q.depth || p.block.base - q.block.base);
+
+    for (const entry of order) {
+      this.drawBlock(g, b, entry.block, ground, alpha, wall, roof, tint !== undefined);
+    }
+
+    if (!tint) this.drawChimney(g, b, blocks[0], ground, roof);
+  }
+
+  /**
+   * A horizontal band across one wall, between two heights given as fractions
+   * of the wall. Used for eaves and contact occlusion.
+   */
+  private drawWallBand(
+    g: Graphics,
+    base: Point[],
+    top: Point[],
+    i: number,
+    j: number,
+    v0: number,
+    v1: number,
+    colour: number,
+    darken: number,
+    alpha: number,
+  ): void {
+    const lerp = (a: Point, b: Point, t: number): Point => ({
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+    });
+
+    const a0 = lerp(base[i], top[i], v0);
+    const b0 = lerp(base[j], top[j], v0);
+    const a1 = lerp(base[i], top[i], v1);
+    const b1 = lerp(base[j], top[j], v1);
+
+    g.poly([a0.x, a0.y, b0.x, b0.y, b1.x, b1.y, a1.x, a1.y]).fill({
+      color: shade(colour, -darken),
+      alpha: alpha * 0.55,
+    });
+  }
+
+  /** The four ground corners of a block, in world space, optionally grown. */
+  private blockCorners(b: Building, block: Block, grow = 0): Vec2[] {
+    const hw = block.width / 2 + grow;
+    const hd = block.depth / 2 + grow;
+    return [
+      this.local(b, block.u - hw, block.v - hd),
+      this.local(b, block.u + hw, block.v - hd),
+      this.local(b, block.u + hw, block.v + hd),
+      this.local(b, block.u - hw, block.v + hd),
+    ];
+  }
+
+  /**
+   * One volume: walls to the eaves, then whatever roof it carries.
+   *
+   * Faces are lit by their true normal against the one sun (`palette.ts`), so a
+   * wall turned away from the light goes *blue* rather than merely dark. That
+   * single change is most of the difference between this and flat shading.
+   */
+  private drawBlock(
+    g: Graphics,
+    b: Building,
+    block: Block,
+    ground: number,
+    alpha: number,
+    wall: number,
+    roof: number,
+    flat: boolean,
+  ): void {
+    const corners = this.blockCorners(b, block);
+    const foot = ground + block.base;
+    const eaves = foot + block.height;
+
+    const base = corners.map((c) => this.project(c.x, c.y, foot));
     const top = corners.map((c) => this.project(c.x, c.y, eaves));
 
-    // Walls, back to front. Any rotation is allowed, so sort rather than assume.
     const walls = [0, 1, 2, 3]
       .map((i) => {
         const j = (i + 1) % 4;
@@ -999,57 +1100,66 @@ export class WorldView {
 
     for (let wi = 0; wi < walls.length; wi++) {
       const w = walls[wi];
-      const sideOn =
-        Math.abs(corners[w.j].x - corners[w.i].x) > Math.abs(corners[w.j].y - corners[w.i].y);
-      const face = shade(wall, sideOn ? -0.12 : -0.26);
+      const ax = corners[w.j].x - corners[w.i].x;
+      const ay = corners[w.j].y - corners[w.i].y;
+      // Outward normal of a wall whose corners run anticlockwise in local space.
+      const face = flat ? wall : lit(wall, lambertOf(ay, -ax, 0), 0.06);
 
       g.poly([
         top[w.i].x, top[w.i].y,
         top[w.j].x, top[w.j].y,
         base[w.j].x, base[w.j].y,
         base[w.i].x, base[w.i].y,
-      ]).fill({ color: face, alpha });
+      ])
+        .fill({ color: face, alpha })
+        .stroke(edge(face, alpha));
 
-      // Openings only on the walls actually facing the camera, and a door only
-      // on the nearest one — a building with four front doors looks wrong.
-      if (!tint && look.form !== 'flat' && wi >= walls.length - 2) {
-        const length = Math.hypot(
-          corners[w.j].x - corners[w.i].x,
-          corners[w.j].y - corners[w.i].y,
-        );
+      // Two bands of occlusion, and between them they do more work than any
+      // other four lines here.
+      //
+      // **Under the eaves**, because an overhanging roof shades the wall it
+      // oversails — this is what stops a roof looking pasted on. **At the
+      // ground**, because light does not reach into the angle where a wall meets
+      // the earth — this is what stops a building looking like a sticker.
+      // Neither is expensive and neither needs a shadow pass.
+      if (!flat && block.height > 1.6) {
+        this.drawWallBand(g, base, top, w.i, w.j, 0.82, 1, face, 0.3, alpha);
+        this.drawWallBand(g, base, top, w.i, w.j, 0, 0.11, face, 0.34, alpha);
+      }
+
+      // Openings only on walls actually facing the camera, and a door only on
+      // the nearest one — a building with four front doors looks wrong.
+      const wantsFacade = block.facade && !block.stack && !flat && block.height > 2.4;
+      if (wantsFacade && wi >= walls.length - 2) {
+        const length = Math.hypot(ax, ay);
         this.drawFacade(
           g,
           [base[w.i], base[w.j], top[w.j], top[w.i]],
           b.typeId,
           length,
-          eavesHeight,
+          block.height,
           face,
-          wi === walls.length - 1,
-          look.framed === true,
+          (block.door ?? false) && wi === walls.length - 1,
+          block.framed === true,
           b.id * 7 + wi,
         );
       }
+
+      // Masonry courses, drawn as geometry rather than implied by a flat fill.
+      if (!flat && block.stack) this.drawCourses(g, [base[w.i], base[w.j], top[w.j], top[w.i]], block.height, face);
     }
 
-    if (look.form === 'flat') {
+    if (block.form === 'flat') {
+      const deck = lit(block.stack ? wall : roof, lambertOf(0, 0, 1), 0.04);
       g.poly([
         top[0].x, top[0].y, top[1].x, top[1].y, top[2].x, top[2].y, top[3].x, top[3].y,
-      ]).fill({ color: shade(wall, 0.1), alpha });
-    } else {
-      this.drawRoof(g, b, look, eaves, alpha, wall, roof);
-      if (!tint) this.drawChimney(g, b, look, eaves, roof);
+      ]).fill({ color: deck, alpha });
+      if (block.crown) this.drawCrown(g, b, block, eaves, alpha, wall);
+      return;
     }
 
-    if (look.tower) this.drawTower(g, b, look, ground, alpha, wall, roof);
+    this.drawBlockRoof(g, b, block, eaves, alpha, wall, roof, flat);
   }
-
-  /**
-   * Draw a wall by deriving it (`grammar.ts`) rather than by rule of thumb.
-   *
-   * Panels come back in the face's own [0,1] space; the face's four projected
-   * corners are then interpolated to place them. The projection is affine, so
-   * this is exact rather than approximate.
-   */
   private drawFacade(
     g: Graphics,
     face: [Point, Point, Point, Point],
@@ -1102,20 +1212,25 @@ export class WorldView {
   }
 
   /** A stack at the gable end. Most of what says "somebody lives here". */
+  /** A stack at the gable end. Most of what says "somebody lives here". */
   private drawChimney(
     g: Graphics,
     b: Building,
-    look: Appearance,
-    eaves: number,
+    block: Block,
+    ground: number,
     roof: number,
   ): void {
     const type = buildingType(b.typeId);
-    if (look.tower || type.family === 'economic') return;
-    if (Math.min(type.width, type.depth) < 6) return;
+    const look = appearanceOf(b.typeId);
+    if (look.tower || type.family === 'economic' || block.form === 'flat') return;
+    if (Math.min(block.width, block.depth) < 5) return;
 
-    const halfU = (look.ridgeAlongWidth ? type.width : type.depth) / 2;
+    const eaves = ground + block.base + block.height;
+    const halfU = (block.ridgeAlongWidth ? block.width : block.depth) / 2;
     const u = halfU - 1.2;
-    const p = look.ridgeAlongWidth ? this.local(b, u, 0) : this.local(b, 0, u);
+    const p = block.ridgeAlongWidth
+      ? this.local(b, block.u + u, block.v)
+      : this.local(b, block.u, block.v + u);
 
     const w = 0.7;
     const corners = [
@@ -1125,70 +1240,122 @@ export class WorldView {
       { x: p.x - w, y: p.y + w },
     ];
     const bottom = corners.map((c) => this.project(c.x, c.y, eaves));
-    const cap = corners.map((c) => this.project(c.x, c.y, eaves + look.rise + 1.6));
+    const cap = corners.map((c) => this.project(c.x, c.y, eaves + block.rise + 1.6));
 
     for (const i of [0, 1, 2, 3]) {
       const j = (i + 1) % 4;
+      const ax = corners[j].x - corners[i].x;
+      const ay = corners[j].y - corners[i].y;
       g.poly([
         cap[i].x, cap[i].y, cap[j].x, cap[j].y, bottom[j].x, bottom[j].y, bottom[i].x, bottom[i].y,
-      ]).fill(shade(roof, -0.3));
+      ]).fill(lit(roof, lambertOf(ay, -ax, 0), -0.12));
     }
     g.poly([
       cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
     ]).fill(shade(roof, -0.5));
   }
 
-  private drawRoof(
+  /**
+   * The roof of one block. Gable, hip and lean are the same construction with
+   * different insets; only the ends differ.
+   *
+   * Slopes are lit by their true 3D normal, so the two sides of a pitched roof
+   * separate into a warm plane and a cool one instead of two arbitrary tints.
+   * On a scene of a hundred roofs that is the difference between a model village
+   * and a chart.
+   */
+  private drawBlockRoof(
     g: Graphics,
     b: Building,
-    look: Appearance,
+    block: Block,
     eaves: number,
     alpha: number,
     wall: number,
     roof: number,
+    flat: boolean,
   ): void {
-    const type = buildingType(b.typeId);
-    const hw = type.width / 2;
-    const hd = type.depth / 2;
-    const ridgeH = eaves + look.rise;
+    const hw = block.width / 2;
+    const hd = block.depth / 2;
+    const ridgeH = eaves + block.rise;
 
-    // Along the ridge is "u"; across it is "v". Working in the building's own
-    // frame keeps gable and hip identical apart from the inset.
-    const alongWidth = look.ridgeAlongWidth;
+    // Along the ridge is "u"; across it is "v". Working in the block's own frame
+    // keeps gable, hip and lean identical apart from the inset.
+    const alongWidth = block.ridgeAlongWidth;
     // The roof oversails the walls. A flush roof reads as a box; an overhang is
     // most of what makes a building look built rather than extruded.
-    const over = look.overhang ?? 0.5;
+    const over = block.overhang;
     const halfU = (alongWidth ? hw : hd) + over;
     const halfV = (alongWidth ? hd : hw) + over;
-    const inset = look.form === 'hip' ? Math.min(halfU * 0.45, halfV) : 0;
+    const inset = block.form === 'hip' ? Math.min(halfU * 0.45, halfV) : 0;
+
+    // A lean-to's ridge sits over one edge instead of down the middle.
+    const lean = block.form === 'lean';
+    const leanFrom = block.leanFrom ?? -1;
+    const ridgeV = lean ? halfV * leanFrom : 0;
 
     const at = (u: number, v: number, h: number) => {
-      const p = alongWidth ? this.local(b, u, v) : this.local(b, v, u);
+      const p = alongWidth
+        ? this.local(b, block.u + u, block.v + v)
+        : this.local(b, block.u + v, block.v + u);
       return this.project(p.x, p.y, h);
     };
 
-    const ridgeA = at(-halfU + inset, 0, ridgeH);
-    const ridgeB = at(halfU - inset, 0, ridgeH);
+    // Local axes in world space, needed for the slope normals.
+    const cos = Math.cos(b.rotation);
+    const sin = Math.sin(b.rotation);
+    const vAxis = alongWidth ? { x: -sin, y: cos } : { x: cos, y: sin };
+
+    const ridgeA = at(-halfU + inset, ridgeV, ridgeH);
+    const ridgeB = at(halfU - inset, ridgeV, ridgeH);
 
     const eaveNegA = at(-halfU, -halfV, eaves);
     const eaveNegB = at(halfU, -halfV, eaves);
     const eavePosA = at(-halfU, halfV, eaves);
     const eavePosB = at(halfU, halfV, eaves);
 
-    // Which long slope is nearer the viewer decides draw order.
-    const centreNeg = alongWidth ? this.local(b, 0, -halfV) : this.local(b, -halfV, 0);
-    const centrePos = alongWidth ? this.local(b, 0, halfV) : this.local(b, halfV, 0);
+    // Slope normal: horizontal component points down-slope, vertical up.
+    const run = lean ? halfV * 2 : halfV;
+    const pitch = Math.atan2(block.rise, Math.max(0.3, run));
+    const slopeNormal = (side: 1 | -1) => {
+      const s = Math.sin(pitch);
+      const c = Math.cos(pitch);
+      return lambertOf(vAxis.x * s * side, vAxis.y * s * side, c);
+    };
+
+    const negColour = flat ? roof : lit(roof, slopeNormal(-1), 0.04);
+    const posColour = flat ? roof : lit(roof, slopeNormal(1), 0.04);
+
+    const centreNeg = alongWidth
+      ? this.local(b, block.u, block.v - halfV)
+      : this.local(b, block.u - halfV, block.v);
+    const centrePos = alongWidth
+      ? this.local(b, block.u, block.v + halfV)
+      : this.local(b, block.u + halfV, block.v);
     const negFirst = centreNeg.x + centreNeg.y < centrePos.x + centrePos.y;
 
-    const slopeNeg = () =>
+    const slopeNeg = () => {
+      if (lean && leanFrom === -1) return; // the high edge: no slope this side
       g.poly([
         eaveNegA.x, eaveNegA.y, eaveNegB.x, eaveNegB.y, ridgeB.x, ridgeB.y, ridgeA.x, ridgeA.y,
-      ]).fill({ color: shade(roof, 0.08), alpha });
+      ])
+        .fill({ color: negColour, alpha })
+        .stroke(edge(negColour, alpha));
+      if (!flat) {
+        this.drawRoofCourses(g, eaveNegA, eaveNegB, ridgeB, ridgeA, negColour, block, b.id);
+      }
+    };
 
-    const slopePos = () =>
+    const slopePos = () => {
+      if (lean && leanFrom === 1) return;
       g.poly([
         eavePosA.x, eavePosA.y, eavePosB.x, eavePosB.y, ridgeB.x, ridgeB.y, ridgeA.x, ridgeA.y,
-      ]).fill({ color: shade(roof, -0.16), alpha });
+      ])
+        .fill({ color: posColour, alpha })
+        .stroke(edge(posColour, alpha));
+      if (!flat) {
+        this.drawRoofCourses(g, eavePosA, eavePosB, ridgeB, ridgeA, posColour, block, b.id);
+      }
+    };
 
     if (negFirst) {
       slopeNeg();
@@ -1199,39 +1366,158 @@ export class WorldView {
     }
 
     // A ridge cap, so the two slopes meet in a line rather than a seam.
-    g.poly([
-      ridgeA.x, ridgeA.y - 0.6, ridgeB.x, ridgeB.y - 0.6,
-      ridgeB.x, ridgeB.y + 0.5, ridgeA.x, ridgeA.y + 0.5,
-    ]).fill({ color: shade(roof, -0.3), alpha });
+    if (!lean) {
+      g.poly([
+        ridgeA.x, ridgeA.y - 0.6, ridgeB.x, ridgeB.y - 0.6,
+        ridgeB.x, ridgeB.y + 0.5, ridgeA.x, ridgeA.y + 0.5,
+      ]).fill({ color: shade(roof, -0.28), alpha });
+    }
 
-    if (look.dormers) this.drawDormers(g, look, at, halfU, halfV, eaves, ridgeH, alpha, wall, roof);
+    if (block.dormers) {
+      this.drawDormers(g, block, at, halfU, halfV, eaves, ridgeH, alpha, wall, roof, flat);
+    }
 
-    if (look.form === 'hip') {
-      // Hipped ends are roof, not wall.
+    if (block.form === 'hip') {
+      const hipColour = flat ? roof : lit(roof, slopeNormal(1) * 0.4 + slopeNormal(-1) * 0.4, 0.04);
       g.poly([
         eaveNegA.x, eaveNegA.y, eavePosA.x, eavePosA.y, ridgeA.x, ridgeA.y,
-      ]).fill({ color: shade(roof, -0.05), alpha });
+      ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
       g.poly([
         eaveNegB.x, eaveNegB.y, eavePosB.x, eavePosB.y, ridgeB.x, ridgeB.y,
-      ]).fill({ color: shade(roof, -0.05), alpha });
-    } else {
-      // Gable ends are wall carried up to the ridge — the silhouette that reads
-      // most strongly as a house. They stand on the wall line, inside the eaves.
-      const wallU = halfU - over;
-      const wallV = halfV - over;
-      const gNegA = at(-wallU, -wallV, eaves);
-      const gPosA = at(-wallU, wallV, eaves);
-      const gNegB = at(wallU, -wallV, eaves);
-      const gPosB = at(wallU, wallV, eaves);
-      const apexA = at(-wallU, 0, ridgeH);
-      const apexB = at(wallU, 0, ridgeH);
+      ]).fill({ color: hipColour, alpha }).stroke(edge(hipColour, alpha));
+      return;
+    }
 
-      g.poly([
-        gNegA.x, gNegA.y, gPosA.x, gPosA.y, apexA.x, apexA.y,
-      ]).fill({ color: shade(wall, -0.2), alpha });
-      g.poly([
-        gNegB.x, gNegB.y, gPosB.x, gPosB.y, apexB.x, apexB.y,
-      ]).fill({ color: shade(wall, -0.2), alpha });
+    // Gable and lean ends are wall carried up to the ridge — the silhouette that
+    // reads most strongly as a house. They stand on the wall line, inside the
+    // eaves, and are lit as the wall below them so the two do not disagree.
+    const wallU = halfU - over;
+    const wallV = halfV - over;
+    const endAxis = alongWidth ? { x: cos, y: sin } : { x: -sin, y: cos };
+    const gableColour = (side: 1 | -1) =>
+      flat ? wall : lit(wall, lambertOf(endAxis.x * side, endAxis.y * side, 0), 0.02);
+
+    const gNegA = at(-wallU, -wallV, eaves);
+    const gPosA = at(-wallU, wallV, eaves);
+    const gNegB = at(wallU, -wallV, eaves);
+    const gPosB = at(wallU, wallV, eaves);
+    const apexV = lean ? wallV * leanFrom : 0;
+    const apexA = at(-wallU, apexV, ridgeH);
+    const apexB = at(wallU, apexV, ridgeH);
+
+    const gable = (
+      n: Point,
+      p: Point,
+      apex: Point,
+      colour: number,
+      near: boolean,
+    ) => {
+      g.poly([n.x, n.y, p.x, p.y, apex.x, apex.y]).fill({ color: colour, alpha });
+      if (flat || block.rise < 1.4) return;
+
+      // A big gable is the largest unbroken shape on a building, and left as one
+      // flat triangle it reads as sailcloth rather than a wall — worst of all on
+      // a church, where it is sixteen metres of pale limestone. Two marks fix it:
+      // courses across the triangle, so it is visibly the same masonry as the
+      // wall below, and a **verge** down both rakes, which is the stone edging a
+      // real gable carries where it meets the roof.
+      const rows = Math.max(2, Math.min(5, Math.round(block.rise / 1.6)));
+      for (let i = 1; i < rows; i++) {
+        const t = i / rows;
+        const a = { x: n.x + (apex.x - n.x) * t, y: n.y + (apex.y - n.y) * t };
+        const c = { x: p.x + (apex.x - p.x) * t, y: p.y + (apex.y - p.y) * t };
+        g.moveTo(a.x, a.y).lineTo(c.x, c.y).stroke({
+          color: shade(colour, -0.13),
+          width: 0.13,
+          alpha: 0.6,
+        });
+      }
+
+      const verge = shade(colour, near ? -0.22 : -0.3);
+      g.moveTo(n.x, n.y).lineTo(apex.x, apex.y).lineTo(p.x, p.y).stroke({
+        color: verge,
+        width: 0.34,
+        alpha: 0.85,
+      });
+    };
+
+    const centreA = alongWidth
+      ? this.local(b, block.u - wallU, block.v)
+      : this.local(b, block.u, block.v - wallU);
+    const centreB = alongWidth
+      ? this.local(b, block.u + wallU, block.v)
+      : this.local(b, block.u, block.v + wallU);
+    const aNearer = centreA.x + centreA.y > centreB.x + centreB.y;
+
+    gable(gNegA, gPosA, apexA, gableColour(-1), aNearer);
+    gable(gNegB, gPosB, apexB, gableColour(1), !aNearer);
+  }
+
+  /**
+   * Courses across a roof slope: slate bands, tile rows, thatch combing.
+   *
+   * A roof is the largest single surface in the scene and a flat fill on it is
+   * the loudest thing saying "polygon". These are drawn in the slope's own
+   * parametric space, so they follow the pitch and the projection for free.
+   */
+  private drawRoofCourses(
+    g: Graphics,
+    eaveA: Point,
+    eaveB: Point,
+    ridgeB: Point,
+    ridgeA: Point,
+    colour: number,
+    block: Block,
+    seed: number,
+  ): void {
+    const rise = block.rise;
+    if (rise < 0.5) return;
+
+    // Along the eaves is u; up the slope is v.
+    const at = (u: number, v: number): Point => ({
+      x: eaveA.x + (eaveB.x - eaveA.x) * u
+        + ((ridgeA.x - eaveA.x) + ((ridgeB.x - eaveB.x) - (ridgeA.x - eaveA.x)) * u) * v,
+      y: eaveA.y + (eaveB.y - eaveA.y) * u
+        + ((ridgeA.y - eaveA.y) + ((ridgeB.y - eaveB.y) - (ridgeA.y - eaveA.y)) * u) * v,
+    });
+
+    const rows = Math.max(2, Math.min(7, Math.round(rise * 1.5)));
+    const line = shade(colour, -0.13);
+
+    for (let i = 1; i < rows; i++) {
+      const v = i / rows;
+      const a = at(0, v);
+      const c = at(1, v);
+      g.moveTo(a.x, a.y).lineTo(c.x, c.y).stroke({ color: line, width: 0.16, alpha: 0.75 });
+    }
+
+    // A slightly deeper eaves course, which is what reads as a roof edge.
+    const e0 = at(0, 0.06);
+    const e1 = at(1, 0.06);
+    g.moveTo(e0.x, e0.y).lineTo(e1.x, e1.y).stroke({
+      color: shade(colour, -0.24),
+      width: 0.24,
+      alpha: 0.8,
+    });
+    void seed;
+  }
+
+  /** Masonry courses up a stack or a tower, for the same reason as the roof. */
+  private drawCourses(
+    g: Graphics,
+    face: [Point, Point, Point, Point],
+    height: number,
+    colour: number,
+  ): void {
+    const [b0, b1, t1, t0] = face;
+    const rows = Math.max(2, Math.min(9, Math.round(height / 2.2)));
+    const line = shade(colour, -0.14);
+
+    for (let i = 1; i < rows; i++) {
+      const v = i / rows;
+      const a = { x: b0.x + (t0.x - b0.x) * v, y: b0.y + (t0.y - b0.y) * v };
+      const c = { x: b1.x + (t1.x - b1.x) * v, y: b1.y + (t1.y - b1.y) * v };
+      g.moveTo(a.x, a.y).lineTo(c.x, c.y).stroke({ color: line, width: 0.14, alpha: 0.55 });
     }
   }
 
@@ -1241,7 +1527,7 @@ export class WorldView {
    */
   private drawDormers(
     g: Graphics,
-    look: Appearance,
+    block: Block,
     at: (u: number, v: number, h: number) => Point,
     halfU: number,
     halfV: number,
@@ -1250,8 +1536,9 @@ export class WorldView {
     alpha: number,
     wall: number,
     roof: number,
+    flat: boolean,
   ): void {
-    const n = look.dormers ?? 0;
+    const n = block.dormers ?? 0;
     if (n < 1) return;
 
     // Two thirds of the way up the slope, facing the near side.
@@ -1260,6 +1547,11 @@ export class WorldView {
     const h = eaves + (ridgeH - eaves) * t;
     const halfSpan = halfU * 0.72;
     const width = Math.min(1.5, (halfSpan * 1.6) / (n * 2.2));
+
+    const cheek = flat ? roof : shade(roof, -0.24);
+    const front = flat ? wall : shade(wall, -0.02);
+    const gable = flat ? wall : shade(wall, -0.16);
+    const cap = flat ? roof : shade(roof, 0.14);
 
     for (let i = 0; i < n; i++) {
       const u = n === 1 ? 0 : -halfSpan + (2 * halfSpan * i) / (n - 1);
@@ -1273,53 +1565,44 @@ export class WorldView {
       const backR = at(u + width, v + 1.4, h + 1.5);
 
       // Cheek, face, gable and a little roof over it.
-      g.poly([
-        faceL.x, faceL.y, topL.x, topL.y, backL.x, backL.y,
-      ]).fill({ color: shade(roof, -0.24), alpha });
+      g.poly([faceL.x, faceL.y, topL.x, topL.y, backL.x, backL.y]).fill({ color: cheek, alpha });
       g.poly([
         faceL.x, faceL.y, faceR.x, faceR.y, topR.x, topR.y, topL.x, topL.y,
-      ]).fill({ color: shade(wall, -0.06), alpha });
-      g.poly([
-        topL.x, topL.y, topR.x, topR.y, apex.x, apex.y,
-      ]).fill({ color: shade(wall, -0.18), alpha });
+      ]).fill({ color: front, alpha });
+      g.poly([topL.x, topL.y, topR.x, topR.y, apex.x, apex.y]).fill({ color: gable, alpha });
       g.poly([
         topL.x, topL.y, topR.x, topR.y, backR.x, backR.y, backL.x, backL.y,
-      ]).fill({ color: shade(roof, 0.12), alpha });
+      ]).fill({ color: cap, alpha });
 
       // The window itself.
       const wl = at(u - width * 0.55, v, h + 0.35);
       const wr = at(u + width * 0.55, v, h + 0.35);
       const wtl = at(u - width * 0.55, v, h + 1.2);
       const wtr = at(u + width * 0.55, v, h + 1.2);
-      g.poly([
-        wl.x, wl.y, wr.x, wr.y, wtr.x, wtr.y, wtl.x, wtl.y,
-      ]).fill({ color: shade(wall, -0.55), alpha });
+      g.poly([wl.x, wl.y, wr.x, wr.y, wtr.x, wtr.y, wtl.x, wtl.y]).fill({
+        color: shade(wall, -0.55),
+        alpha,
+      });
     }
   }
 
-  /** A spire for a church, a stack for a foundry. Landmarks, either way. */
-  private drawTower(
+  /**
+   * How a tower finishes: a spire, a flat cap, or battlements.
+   *
+   * The crown is the whole silhouette argument in miniature. A church and a keep
+   * are the same box from fifty metres away; what tells them apart at a glance is
+   * that one comes to a point and the other is notched. Nothing else in the game
+   * has a notched top, so a fortification is legible from right across the map.
+   */
+  private drawCrown(
     g: Graphics,
     b: Building,
-    look: Appearance,
-    ground: number,
+    block: Block,
+    topH: number,
     alpha: number,
     wall: number,
-    roof: number,
   ): void {
-    const tower = look.tower!;
-    const type = buildingType(b.typeId);
-    const half = tower.width / 2;
-    const offset = -type.width / 2 + half + 0.5;
-    const topH = ground + tower.height;
-
-    const corners = [
-      this.local(b, offset - half, -half),
-      this.local(b, offset + half, -half),
-      this.local(b, offset + half, half),
-      this.local(b, offset - half, half),
-    ];
-    const base = corners.map((c) => this.project(c.x, c.y, ground));
+    const corners = this.blockCorners(b, block);
     const cap = corners.map((c) => this.project(c.x, c.y, topH));
 
     const faces = [0, 1, 2, 3]
@@ -1329,62 +1612,44 @@ export class WorldView {
       })
       .sort((a, c) => a.depth - c.depth);
 
-    for (const f of faces) {
-      const sideOn = Math.abs(corners[f.j].x - corners[f.i].x) > Math.abs(corners[f.j].y - corners[f.i].y);
-      g.poly([
-        cap[f.i].x, cap[f.i].y,
-        cap[f.j].x, cap[f.j].y,
-        base[f.j].x, base[f.j].y,
-        base[f.i].x, base[f.i].y,
-      ]).fill({ color: shade(wall, sideOn ? -0.16 : -0.3), alpha });
-    }
-
-    const crown = tower.crown ?? (tower.width < 3.5 ? 'flat' : 'spire');
-
-    if (crown === 'flat') {
-      g.poly([
-        cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
-      ]).fill({ color: shade(wall, -0.4), alpha });
-      return;
-    }
-
-    if (crown === 'battlement') {
-      // The roof deck, then merlons around it. Notched, never pointed: this is
-      // the one silhouette in the game that says "fortification" on its own.
-      g.poly([
-        cap[0].x, cap[0].y, cap[1].x, cap[1].y, cap[2].x, cap[2].y, cap[3].x, cap[3].y,
-      ]).fill({ color: shade(wall, -0.42), alpha });
-
-      const merlonH = Math.max(1.1, tower.width * 0.22);
+    if (block.crown === 'battlement') {
+      const merlonH = Math.max(1.1, block.width * 0.22);
       const segments = 5;
 
-      // Far edges first, so the near parapet reads in front of the deck.
       for (const f of faces) {
         const a = corners[f.i];
         const c = corners[f.j];
+        const ax = c.x - a.x;
+        const ay = c.y - a.y;
+        const colour = lit(wall, lambertOf(ay, -ax, 0), 0.06);
+
         for (let s = 0; s < segments; s += 2) {
           const t0 = s / segments;
           const t1 = (s + 1) / segments;
-          const q0 = { x: a.x + (c.x - a.x) * t0, y: a.y + (c.y - a.y) * t0 };
-          const q1 = { x: a.x + (c.x - a.x) * t1, y: a.y + (c.y - a.y) * t1 };
+          const q0 = { x: a.x + ax * t0, y: a.y + ay * t0 };
+          const q1 = { x: a.x + ax * t1, y: a.y + ay * t1 };
           const b0 = this.project(q0.x, q0.y, topH);
           const b1 = this.project(q1.x, q1.y, topH);
-          const t0p = this.project(q0.x, q0.y, topH + merlonH);
-          const t1p = this.project(q1.x, q1.y, topH + merlonH);
-          g.poly([
-            t0p.x, t0p.y, t1p.x, t1p.y, b1.x, b1.y, b0.x, b0.y,
-          ]).fill({ color: shade(wall, -0.1), alpha });
+          const u0 = this.project(q0.x, q0.y, topH + merlonH);
+          const u1 = this.project(q1.x, q1.y, topH + merlonH);
+          g.poly([u0.x, u0.y, u1.x, u1.y, b1.x, b1.y, b0.x, b0.y]).fill({ color: colour, alpha });
         }
       }
       return;
     }
 
-    const apexPoint = this.local(b, offset, 0);
-    const apex = this.project(apexPoint.x, apexPoint.y, topH + tower.width * 1.8);
-    for (const f of faces) {
-      g.poly([
-        cap[f.i].x, cap[f.i].y, cap[f.j].x, cap[f.j].y, apex.x, apex.y,
-      ]).fill({ color: shade(roof, f.depth > 0 ? -0.18 : 0.06), alpha });
+    if (block.crown === 'spire') {
+      const centre = this.local(b, block.u, block.v);
+      const apex = this.project(centre.x, centre.y, topH + block.width * 1.8);
+      const roofColour = appearanceOf(b.typeId).roof;
+      for (const f of faces) {
+        const ax = corners[f.j].x - corners[f.i].x;
+        const ay = corners[f.j].y - corners[f.i].y;
+        // A spire's faces are steep, so they are lit close to a vertical wall.
+        g.poly([
+          cap[f.i].x, cap[f.i].y, cap[f.j].x, cap[f.j].y, apex.x, apex.y,
+        ]).fill({ color: lit(roofColour, lambertOf(ay * 0.9, -ax * 0.9, 0.42), 0.02), alpha });
+      }
     }
   }
 
@@ -1519,6 +1784,21 @@ function depthBand(depth: number): number {
 }
 
 /** Muted working clothes: madder, woad, undyed wool, russet. */
+/**
+ * The edge of a face, drawn as a darker line of the face's own colour.
+ *
+ * Not a cartoon outline: a black keyline round every polygon flattens a scene
+ * and fights the lighting. Stroking each face with a darkened version of
+ * *itself* separates the planes without introducing a colour that is not already
+ * in the picture, so a wall reads as meeting a roof rather than as overlapping
+ * it. This is the cheapest thing in the whole renderer and close to the most
+ * valuable — it is what makes the geometry look intentional rather than
+ * approximate.
+ */
+function edge(colour: number, alpha: number): { color: number; width: number; alpha: number } {
+  return { color: shade(colour, -0.22), width: 0.11, alpha: alpha * 0.75 };
+}
+
 /**
  * The colour of a military boundary between two cells. Two sides pressing
  * against each other is not a border at all — it is a battle line, and it gets

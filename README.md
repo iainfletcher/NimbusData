@@ -21,6 +21,7 @@ npm run check      # layer check + typecheck. Run before committing
 npm run trial      # headless trials of the design's claims. Run before committing
 npm run build      # single self-contained dist/index.html
 npm run smoke      # loads the build in Chromium, screenshots to shots/
+npm run sheet      # contact sheet: every building type, two variants, flat ground
 ```
 
 `npm run check:layers` enforces the rule from `ARCHITECTURE.md`: `src/sim` may not
@@ -32,6 +33,12 @@ claim in the design documents can be **stated, run and measured** rather than
 eyeballed in a screenshot. Every trial names the section it is checking and
 prints what actually happened. Several have contradicted the documents, which is
 the point of having them; see `design/01` §10.
+
+`npm run sheet` is the same idea for appearance. Judging architecture from a
+townscape does not work — buildings sit on slopes, hide behind each other and are
+half-covered in hedges — so the sheet puts every type on a flat plateau, two
+variants each, rendered by the real build. Two bugs that had survived several
+rounds of looking at the town were obvious within seconds of the first sheet.
 
 ## Current state
 
@@ -46,8 +53,13 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - Housing evolving into the house that belongs where it stands
 - Player-drawn roads as the armature, and worn desire paths in the gaps
 - Buildings snapping to a road frontage, or facing a worn path more loosely
+- A **mass grammar**: buildings are derived into volumes — main range, cross-wing,
+  lean-to, jetty, porch, chancel, turret, stack, veranda — composed by character,
+  so a merchant's house oversails the street and a farmstead grows a byre
+- **Two-tone lighting**: warm sun key, cool sky fill, on true surface normals,
+  shared by buildings and terrain
 - Per-character materials and roof forms — brick and slate, render and tile,
-  limestone and lead, with spires and chimneys for landmarks
+  limestone and lead, with spires, battlements and chimneys for landmarks
 - Facades derived by a split grammar, with a vocabulary per character —
   shopfronts and mullions for trade, arched openings and plain stone for the
   church, regular bays and vents for industry

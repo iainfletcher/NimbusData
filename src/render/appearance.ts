@@ -13,7 +13,13 @@ import { buildingType, type Character } from '../sim';
  * are exactly right. This is the honest view.
  */
 
-export type RoofForm = 'gable' | 'hip' | 'flat';
+/**
+ * `lean` is a mono-pitch: one slope, high along one edge and falling to the
+ * other. It is what a lean-to, an outshut and a veranda canopy all are, and it
+ * is the form that makes a building look like it was added to over time rather
+ * than built in one go.
+ */
+export type RoofForm = 'gable' | 'hip' | 'flat' | 'lean';
 
 export interface Appearance {
   wall: number;
@@ -99,18 +105,22 @@ const OVERRIDES: Record<string, Partial<Appearance>> = {
   // Fortification: tall, blunt, and topped rather than roofed. The crenellated
   // crown is what reads as a fortification from right across the valley, and it
   // is the only silhouette in the game with a notched top.
+  // `tower.height` is measured from the *ground*, not from the eaves — it has to
+  // be, because a church spire starts at the ground and passes the roof on its
+  // way up. Setting these two to a crown height instead put the battlements at
+  // ankle level on a seventeen-metre keep, which is exactly what it looked like.
   watchtower: {
-    eaves: 14,
+    eaves: 13,
     rise: 0,
     form: 'flat',
-    tower: { height: 3.6, width: 6.6, crown: 'battlement' },
+    tower: { height: 17.5, width: 5.4, crown: 'battlement' },
     overhang: 0.85,
   },
   keep: {
-    eaves: 17,
+    eaves: 16,
     rise: 0,
     form: 'flat',
-    tower: { height: 5.5, width: 7.4, crown: 'battlement' },
+    tower: { height: 21.5, width: 6.8, crown: 'battlement' },
     overhang: 1.1,
   },
   barrack_row: { eaves: 5.6, rise: 2, ridgeAlongWidth: true, overhang: 0.3 },

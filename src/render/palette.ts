@@ -57,6 +57,91 @@ export function shade(colour: number, amount: number): number {
 }
 
 /**
+ * Two-tone lighting, and the single biggest thing standing between this and
+ * looking like a diorama rather than a diagram.
+ *
+ * Shading by mixing toward white and black — which is what `shade` does, and
+ * what every face in the game used to do — is *greyscale* shading. It makes a
+ * lit wall paler and a shaded wall darker, and the whole scene drifts toward
+ * grey at both ends. Real outdoor light does not work like that, and neither
+ * does any painted or sculpted miniature:
+ *
+ * > **A sunlit face goes warm. A shaded face does not go dark, it goes
+ * > *blue* — because the only light reaching it is the sky.**
+ *
+ * So faces are mixed toward a warm sun colour or a cool sky colour instead of
+ * toward white or black. Nothing else about the geometry changes, and the whole
+ * scene stops looking like flat-shaded polygons. It is also physically the right
+ * model — key light plus hemispherical fill — arrived at for the cheapest
+ * possible reason: two lerps and no extra draw calls.
+ */
+const SUN_COLOUR = 0xffd694;
+const SKY_COLOUR = 0x415675;
+
+/**
+ * How hard the key and the fill push, and the ratio between them is the whole
+ * tuning.
+ *
+ * The first attempt used a strong key, and every pale roof in the town washed
+ * out to cream: a thatch already at 0xc0a765 mixed a third of the way to a light
+ * warm colour has nowhere left to go. **Contrast has to come from the shadow
+ * side, not the lit side** — which is also how it works outdoors, where the sun
+ * is one stop of lift and the shade is three stops of loss. So the key is light
+ * and the fill is heavy and properly dark.
+ */
+const SUN_STRENGTH = 0.15;
+const SKY_STRENGTH = 0.42;
+
+/**
+ * Light a surface from how squarely it faces the sun.
+ *
+ * `lambert` is the cosine of the angle to the light, in −1..1: +1 is facing it
+ * head on, 0 is edge on, −1 is facing directly away. An `ambient` term lifts
+ * everything slightly so a fully turned-away face still reads as a material
+ * rather than a hole.
+ */
+export function lit(colour: number, lambert: number, ambient = 0): number {
+  const t = Math.max(-1, Math.min(1, lambert + ambient));
+  return t >= 0
+    ? mix(colour, SUN_COLOUR, t * SUN_STRENGTH)
+    : mix(colour, SKY_COLOUR, -t * SKY_STRENGTH);
+}
+
+/**
+ * The sun, in one place, so terrain relief, wall shading, roof slopes and cast
+ * shadows all agree. Low in the north-west: the classic isometric key light,
+ * which throws shadows away from the camera rather than across the thing casting
+ * them.
+ *
+ * Elevation matters as much as bearing. At 38° a roof slope facing the sun and
+ * one facing away differ strongly, which is what makes a pitched roof read as
+ * two planes instead of one flat shape.
+ */
+export const SUN = { x: 0.58, y: 0.81 };
+const SUN_ELEVATION = 0.66; // radians, ~38°
+
+/** Unit vector along which light travels, in 3D. z points up. */
+export const SUN_DIR = (() => {
+  const len = Math.hypot(SUN.x, SUN.y);
+  const c = Math.cos(SUN_ELEVATION);
+  const s = Math.sin(SUN_ELEVATION);
+  return { x: (SUN.x / len) * c, y: (SUN.y / len) * c, z: -s };
+})();
+
+/** How lit a surface with this outward normal is. Normal need not be unit. */
+export function lambertOf(nx: number, ny: number, nz: number): number {
+  const len = Math.hypot(nx, ny, nz) || 1;
+  return -(nx * SUN_DIR.x + ny * SUN_DIR.y + nz * SUN_DIR.z) / len;
+}
+
+/**
+ * What level ground reads as. Anything that wants to show *relief* rather than
+ * absolute orientation should measure against this, so flat ground comes out
+ * neutral and the whole range is spent on slopes.
+ */
+export const FLAT_LAMBERT = lambertOf(0, 0, 1);
+
+/**
  * Ground colour by height. Water is drawn separately now, from the derived
  * surface rather than from "below zero", so this only ever colours land.
  */

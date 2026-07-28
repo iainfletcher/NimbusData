@@ -10,7 +10,8 @@
     "check:layers": "node scripts/check-layers.mjs",
     "check": "npm run check:layers && npm run typecheck",
     "smoke": "node scripts/smoke.mjs",
-    "trial": "node scripts/trial.mjs"
+    "trial": "node scripts/trial.mjs",
+    "sheet": "node scripts/sheet.mjs"
   },
   "repository": {
     "type": "git",
