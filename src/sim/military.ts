@@ -83,7 +83,7 @@ const CLASH_RATE = 0.055;
 const SIEGE_TICKS = 55;
 
 /** What raising a warband costs, and how long a keep needs between musters. */
-export const MUSTER_COST = { timber: 25, food: 40 };
+export const MUSTER_COST = { timber: 25, food: 40, iron: 12 };
 export const MUSTER_COOLDOWN = 70;
 
 /** Food per tick a warband in the field eats. Soldiers cost more than walls. */

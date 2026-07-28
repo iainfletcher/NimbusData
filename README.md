@@ -96,6 +96,17 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - **A chronicle** — a running record of what the town would remember: places
   taking their names, columns broken, hard winters, buildings changing hands
 
+- **Four resources in the ground, and an overlay that shows them** — timber,
+  stone, arable and ore, each normalised against its own best so the map answers
+  "how good is this ground *for this*" rather than "what number is biggest here"
+- **Jobs and workers.** A works yields what its land holds × how well it is
+  staffed, and people only walk so far — so siting is now "find the resource
+  *and* house the people who will work it"
+- **Iron**, smelted from scarce ore seams and the only thing fortification is
+  built from, which is the join between the resource game and the territory game
+- Build buttons that show cost, jobs and affordability, and a **site preview**
+  that draws the catchment and the walk-to-work before you pay
+
 **Not yet built:** planned-fabric amplification (`design/05` §3); broadening
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval
 era.

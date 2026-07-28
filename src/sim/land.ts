@@ -12,6 +12,11 @@ import { CELL_SIZE, WORLD_CELLS } from './types';
  *   the wood you can see is the wood you can cut.
  * - **Stone** follows slope, because that is where rock is at the surface.
  * - **Arable** follows flat, low, well-watered ground.
+ * - **Ore** is the exception and is deliberately different: it sits in *patches*
+ *   on rocky ground rather than following the terrain smoothly. Everything else
+ *   here is a gradient you can read off the landscape at a glance, which makes
+ *   siting easy; ore is scarce and lumpy, so finding a seam is a discovery and
+ *   building on one is a commitment. A game needs both kinds.
  *
  * The point is that resources are a **property of the landscape** rather than a
  * layer sprinkled on top. Siting a sawmill is then a spatial decision you make
@@ -25,7 +30,24 @@ export interface Land {
   readonly timber: Float32Array;
   readonly stone: Float32Array;
   readonly arable: Float32Array;
+  readonly ore: Float32Array;
+  /**
+   * The best value each field reaches on this map.
+   *
+   * Needed because the four resources are not on comparable scales and never
+   * could be: arable is close to 1 across every flat field on the map, while ore
+   * is above zero in three places. Comparing them raw makes "which resource is
+   * strongest here" answer *arable* almost everywhere, which is true and
+   * useless. Normalising by each field's own peak turns the question into
+   * **"how good is this ground, for this resource"** — which is the question
+   * siting a works actually asks.
+   */
+  readonly peak: Record<LandResource, number>;
 }
+
+/** The four things the ground can be good for. */
+export const RESOURCES = ['timber', 'stone', 'arable', 'ore'] as const;
+export type LandResource = (typeof RESOURCES)[number];
 
 export function computeLand(terrain: Terrain, seed: number): Land {
   const width = WORLD_CELLS;
@@ -35,6 +57,7 @@ export function computeLand(terrain: Terrain, seed: number): Land {
   const timber = new Float32Array(n);
   const stone = new Float32Array(n);
   const arable = new Float32Array(n);
+  const ore = new Float32Array(n);
 
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
@@ -59,10 +82,34 @@ export function computeLand(terrain: Terrain, seed: number): Land {
       const flat = Math.max(0, 1 - slope * 6);
       const lowland = h > 1 && h < 46 ? 1 : Math.max(0, 1 - Math.abs(h - 24) / 40);
       arable[i] = flat * lowland;
+
+      // Ore: a coarse field thresholded hard, so it exists in a few real seams
+      // rather than thinly everywhere. Needs rock at the surface to be worth
+      // digging, so it is gated on the same slope stone is.
+      const seam = fbm(wx / 96, wy / 96, seed ^ 0x07e1, 4);
+      const exposed = Math.min(1, Math.max(0, (slope - 0.08) * 5));
+      ore[i] = seam > 0.66 ? Math.min(1, (seam - 0.66) * 5) * exposed : 0;
     }
   }
 
-  return { width, height, timber, stone, arable };
+  const peak = { timber: 0, stone: 0, arable: 0, ore: 0 };
+  for (let i = 0; i < n; i++) {
+    if (timber[i] > peak.timber) peak.timber = timber[i];
+    if (stone[i] > peak.stone) peak.stone = stone[i];
+    if (arable[i] > peak.arable) peak.arable = arable[i];
+    if (ore[i] > peak.ore) peak.ore = ore[i];
+  }
+  for (const r of RESOURCES) peak[r] = Math.max(0.001, peak[r]);
+
+  return { width, height, timber, stone, arable, ore, peak };
+}
+
+/** Read one resource field at a world point. */
+export function landAt(land: Land, resource: LandResource, wx: number, wy: number): number {
+  const cx = Math.floor(wx / CELL_SIZE);
+  const cy = Math.floor(wy / CELL_SIZE);
+  if (cx < 0 || cy < 0 || cx >= land.width || cy >= land.height) return 0;
+  return land[resource][cy * land.width + cx];
 }
 
 /**

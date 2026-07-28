@@ -22,7 +22,8 @@ const TYPES: BuildingType[] = [
     width: 18,
     depth: 14,
     emissions: [{ character: 'industrious', strength: 1.6, radius: 110 }],
-    cost: { timber: 30, stone: 45 },
+    cost: { timber: 30, stone: 45, iron: 10 },
+    jobs: 12,
   },
   {
     id: 'tannery',
@@ -32,6 +33,7 @@ const TYPES: BuildingType[] = [
     depth: 12,
     emissions: [{ character: 'industrious', strength: 1.2, radius: 90 }],
     cost: { timber: 22, stone: 14 },
+    jobs: 6,
   },
   {
     id: 'sawmill',
@@ -44,6 +46,8 @@ const TYPES: BuildingType[] = [
       { character: 'rustic', strength: 0.3, radius: 50 },
     ],
     cost: { timber: 16, stone: 8 },
+    jobs: 5,
+    harvests: 'timber',
   },
   {
     id: 'quarry',
@@ -53,6 +57,8 @@ const TYPES: BuildingType[] = [
     depth: 16,
     emissions: [{ character: 'industrious', strength: 1.1, radius: 85 }],
     cost: { timber: 14 },
+    jobs: 8,
+    harvests: 'stone',
   },
   {
     id: 'workshop',
@@ -62,6 +68,7 @@ const TYPES: BuildingType[] = [
     depth: 9,
     emissions: [{ character: 'industrious', strength: 0.5, radius: 45 }],
     cost: { timber: 14, stone: 6 },
+    jobs: 3,
   },
   {
     id: 'market',
@@ -74,6 +81,7 @@ const TYPES: BuildingType[] = [
       { character: 'raucous', strength: 0.3, radius: 60 },
     ],
     cost: { timber: 26, stone: 34 },
+    jobs: 6,
   },
   {
     id: 'warehouse',
@@ -83,6 +91,7 @@ const TYPES: BuildingType[] = [
     depth: 12,
     emissions: [{ character: 'mercantile', strength: 0.8, radius: 70 }],
     cost: { timber: 28, stone: 12 },
+    jobs: 4,
   },
   {
     id: 'watermill',
@@ -92,6 +101,7 @@ const TYPES: BuildingType[] = [
     depth: 10,
     emissions: [{ character: 'rustic', strength: 1.0, radius: 80 }],
     cost: { timber: 24, stone: 20 },
+    jobs: 4,
   },
   {
     id: 'farm',
@@ -101,6 +111,20 @@ const TYPES: BuildingType[] = [
     depth: 14,
     emissions: [{ character: 'rustic', strength: 1.3, radius: 110 }],
     cost: { timber: 20, stone: 6 },
+    jobs: 9,
+    harvests: 'arable',
+  },
+
+  {
+    id: 'mine',
+    name: 'Ironstone Mine',
+    family: 'economic',
+    width: 16,
+    depth: 14,
+    emissions: [{ character: 'industrious', strength: 1.4, radius: 100 }],
+    cost: { timber: 34, stone: 22 },
+    jobs: 14,
+    harvests: 'ore',
   },
 
   // ---- Civic -------------------------------------------------------------
@@ -195,7 +219,7 @@ const TYPES: BuildingType[] = [
     width: 8,
     depth: 8,
     emissions: [{ character: 'martial', strength: 0.9, radius: 75 }],
-    cost: { timber: 18, stone: 40 },
+    cost: { timber: 18, stone: 40, iron: 15 },
     garrison: { strength: 0.85, reach: 130, upkeep: 0.05 },
   },
   {
@@ -205,7 +229,7 @@ const TYPES: BuildingType[] = [
     width: 20,
     depth: 20,
     emissions: [{ character: 'martial', strength: 1.8, radius: 140 }],
-    cost: { timber: 45, stone: 130 },
+    cost: { timber: 45, stone: 130, iron: 60 },
     garrison: { strength: 1.5, reach: 235, upkeep: 0.16, musters: true },
   },
 
@@ -227,6 +251,7 @@ const TYPES: BuildingType[] = [
       verdant: 'garden_cottage',
       martial: 'barrack_row',
     },
+    houses: 3,
   },
   {
     id: 'barrack_row',
@@ -236,6 +261,7 @@ const TYPES: BuildingType[] = [
     depth: 8,
     isEvolved: true,
     emissions: [{ character: 'martial', strength: 0.3, radius: 40 }],
+    houses: 8,
   },
   {
     id: 'terrace',
@@ -245,6 +271,7 @@ const TYPES: BuildingType[] = [
     depth: 8,
     isEvolved: true,
     emissions: [{ character: 'industrious', strength: 0.3, radius: 40 }],
+    houses: 8,
   },
   {
     id: 'merchant_house',
@@ -254,6 +281,7 @@ const TYPES: BuildingType[] = [
     depth: 10,
     isEvolved: true,
     emissions: [{ character: 'mercantile', strength: 0.3, radius: 40 }],
+    houses: 4,
   },
   {
     id: 'close_cottage',
@@ -263,6 +291,7 @@ const TYPES: BuildingType[] = [
     depth: 8,
     isEvolved: true,
     emissions: [{ character: 'devout', strength: 0.2, radius: 35 }],
+    houses: 3,
   },
   {
     id: 'farmhouse',
@@ -272,6 +301,7 @@ const TYPES: BuildingType[] = [
     depth: 11,
     isEvolved: true,
     emissions: [{ character: 'rustic', strength: 0.3, radius: 45 }],
+    houses: 4,
   },
   {
     id: 'lodging_house',
@@ -281,6 +311,7 @@ const TYPES: BuildingType[] = [
     depth: 9,
     isEvolved: true,
     emissions: [{ character: 'raucous', strength: 0.3, radius: 40 }],
+    houses: 7,
   },
   {
     id: 'garden_cottage',
@@ -290,6 +321,7 @@ const TYPES: BuildingType[] = [
     depth: 9,
     isEvolved: true,
     emissions: [{ character: 'verdant', strength: 0.3, radius: 45 }],
+    houses: 3,
   },
 ];
 

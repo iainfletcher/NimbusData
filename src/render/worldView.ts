@@ -11,6 +11,9 @@ import {
   type Road,
   type StreetVertex,
   channelWidth,
+  CATCHMENT,
+  RESOURCES,
+  WALK_TO_WORK,
   type Person,
   type Season,
   type Vec2,
@@ -29,6 +32,7 @@ import {
   CONTESTED_COLOUR,
   FLAT_LAMBERT,
   FRONTIER_COLOUR,
+  RESOURCE_COLOURS,
   GROUND_SEASON,
   SUN,
   TERRITORY_COLOURS,
@@ -79,6 +83,8 @@ export class WorldView {
   private peopleBands: Graphics[] = [];
   private dirtyPeopleBands = new Set<number>();
   private ghost = new Graphics();
+  private site = new Graphics();
+  private siteKey = '';
   private elapsed = 0;
 
   private projection: Projection;
@@ -93,6 +99,14 @@ export class WorldView {
   private lastSeason: Season | null = null;
 
   showOverlay = false;
+  /**
+   * Which overlay the diagnostic layer is showing.
+   *
+   * `character` answers "what kind of place is this"; `land` answers "what is
+   * this ground *worth*". The second is what makes siting a works a decision
+   * rather than a guess, and it had simply never been drawn.
+   */
+  overlayMode: 'character' | 'land' = 'character';
   showStreets = true;
   showBorders = false;
   private borderVersion = -1;
@@ -124,7 +138,7 @@ export class WorldView {
       this.root.addChild(statics, people);
     }
 
-    this.root.addChild(this.ghost);
+    this.root.addChild(this.site, this.ghost);
   }
 
   get viewMode(): ViewMode {
@@ -167,6 +181,74 @@ export class WorldView {
 
   markOverlayDirty(): void {
     this.overlayDirty = true;
+  }
+
+  /**
+   * Show what a site is worth before it is paid for.
+   *
+   * Two rings: the **catchment** a producer would draw its material from, filled
+   * with the resource it harvests so you can see whether there is anything
+   * there, and the **walk to work**, so you can see whether anybody could staff
+   * it. Those are the only two questions siting a works asks, and until now the
+   * game answered neither.
+   */
+  setSitePreview(typeId: string | null, pos: Vec2 | null): void {
+    const key = typeId && pos ? `${typeId}:${pos.x.toFixed(1)}:${pos.y.toFixed(1)}` : '';
+    if (key === this.siteKey) return;
+    this.siteKey = key;
+
+    const g = this.site;
+    g.clear();
+    if (!typeId || !pos) return;
+
+    const type = buildingType(typeId);
+    if (!type.harvests && !type.jobs) return;
+
+    const ring = (radius: number, colour: number, alpha: number, width: number) => {
+      const pts: number[] = [];
+      for (let i = 0; i <= 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        const x = pos.x + Math.cos(a) * radius;
+        const y = pos.y + Math.sin(a) * radius;
+        const p = this.project(x, y, this.world.terrain.heightAt(x, y));
+        pts.push(p.x, p.y);
+      }
+      g.poly(pts).stroke({ color: colour, width, alpha });
+      return pts;
+    };
+
+    if (type.harvests) {
+      const colour = RESOURCE_COLOURS[type.harvests];
+      const land = this.world.land;
+      const step = 2;
+      const s = CELL_SIZE * step;
+      const c0 = Math.max(0, Math.floor((pos.x - CATCHMENT) / CELL_SIZE));
+      const c1 = Math.min(land.width - 1, Math.ceil((pos.x + CATCHMENT) / CELL_SIZE));
+      const r0 = Math.max(0, Math.floor((pos.y - CATCHMENT) / CELL_SIZE));
+      const r1 = Math.min(land.height - 1, Math.ceil((pos.y + CATCHMENT) / CELL_SIZE));
+
+      for (let cy = r0; cy <= r1; cy += step) {
+        for (let cx = c0; cx <= c1; cx += step) {
+          const wx = (cx + 0.5) * CELL_SIZE;
+          const wy = (cy + 0.5) * CELL_SIZE;
+          if (Math.hypot(wx - pos.x, wy - pos.y) > CATCHMENT) continue;
+          const v = land[type.harvests][cy * land.width + cx];
+          if (v < 0.08) continue;
+
+          const p00 = this.project(cx * CELL_SIZE, cy * CELL_SIZE, this.world.terrain.heightAtCell(cx, cy));
+          const p10 = this.project(cx * CELL_SIZE + s, cy * CELL_SIZE, this.world.terrain.heightAtCell(cx + step, cy));
+          const p11 = this.project(cx * CELL_SIZE + s, cy * CELL_SIZE + s, this.world.terrain.heightAtCell(cx + step, cy + step));
+          const p01 = this.project(cx * CELL_SIZE, cy * CELL_SIZE + s, this.world.terrain.heightAtCell(cx, cy + step));
+          g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
+            color: colour,
+            alpha: Math.min(0.7, 0.14 + v * 0.6),
+          });
+        }
+      }
+      ring(CATCHMENT, colour, 0.9, 0.7);
+    }
+
+    if (type.jobs) ring(WALK_TO_WORK, 0x7fa7c8, 0.6, 0.5);
   }
 
   /** Which warband the player has picked up, so it can be marked on the ground. */
@@ -527,6 +609,66 @@ export class WorldView {
   }
 
   private drawOverlay(): void {
+    if (this.overlayMode === 'land') {
+      this.drawLandOverlay();
+      return;
+    }
+    this.drawCharacterOverlay();
+  }
+
+  /**
+   * What the ground is worth: timber, stone, arable and ore, drawn where they
+   * are.
+   *
+   * Each cell takes the colour of whichever resource is strongest there, at an
+   * alpha that follows how much of it there is — so a wood reads as a solid
+   * green mass, a thin scatter of stone reads as a wash, and an ore seam reads
+   * as a small hard patch of rust you can go and build on. One glance answers
+   * the only question siting a works asks.
+   */
+  private drawLandOverlay(): void {
+    const g = this.overlay;
+    g.clear();
+
+    const land = this.world.land;
+    const t = this.world.terrain;
+    const step = OVERLAY_STEP;
+    const s = CELL_SIZE * step;
+
+    for (let cy = 0; cy < land.height; cy += step) {
+      for (let cx = 0; cx < land.width; cx += step) {
+        const i = cy * land.width + cx;
+
+        // Normalised against each field's own peak, so a resource shows where
+        // it is *good for that resource* rather than where its raw number
+        // happens to be biggest. Without this the map is one sheet of arable.
+        let best: string | null = null;
+        let bestValue = 0.28;
+        for (const r of RESOURCES) {
+          const v = land[r][i] / land.peak[r];
+          if (v > bestValue) {
+            bestValue = v;
+            best = r;
+          }
+        }
+        if (!best) continue;
+
+        const wx = cx * CELL_SIZE;
+        const wy = cy * CELL_SIZE;
+        const p00 = this.project(wx, wy, t.heightAtCell(cx, cy));
+        const p10 = this.project(wx + s, wy, t.heightAtCell(cx + step, cy));
+        const p11 = this.project(wx + s, wy + s, t.heightAtCell(cx + step, cy + step));
+        const p01 = this.project(wx, wy + s, t.heightAtCell(cx, cy + step));
+
+        g.poly([p00.x, p00.y, p10.x, p10.y, p11.x, p11.y, p01.x, p01.y]).fill({
+          color: RESOURCE_COLOURS[best],
+          alpha: Math.min(0.62, (bestValue - 0.28) * 0.85),
+        });
+      }
+    }
+  }
+
+  private drawCharacterOverlay(): void {
     const g = this.overlay;
     g.clear();
 

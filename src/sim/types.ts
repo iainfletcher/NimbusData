@@ -91,9 +91,22 @@ export interface BuildingType {
   /** Housing that has already evolved does not evolve again in the MVP. */
   isEvolved?: boolean;
   /** What it costs to build. Absent means free — greens and the like. */
-  cost?: { timber?: number; stone?: number; food?: number };
+  cost?: { timber?: number; stone?: number; food?: number; iron?: number };
   /** Military only: what it holds, how far, and what it eats. */
   garrison?: Garrison;
+  /**
+   * How many people this workplace needs before it produces at full rate
+   * (`labour.ts`). A works at half staff yields half.
+   */
+  jobs?: number;
+  /** How many workers live here. Housing only. */
+  houses?: number;
+  /**
+   * Which land potential this building harvests, if any. Drives the yield
+   * preview in the build UI, so the player can see what a site is worth
+   * *before* paying for it.
+   */
+  harvests?: 'timber' | 'stone' | 'arable' | 'ore';
 }
 
 export interface Building {

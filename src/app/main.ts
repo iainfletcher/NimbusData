@@ -137,8 +137,16 @@ async function main(): Promise<void> {
       const label = document.createElement('span');
       label.textContent = type.name;
 
-      btn.append(swatch, label);
-      btn.addEventListener('click', () => selectType(type.id));
+      // What it costs and what it needs, on the button. Building is spending,
+      // and a menu that hides the price is not a resource game.
+      const cost = document.createElement('span');
+      cost.className = 'cost';
+
+      btn.append(swatch, label, cost);
+      btn.addEventListener('click', () => {
+        if (btn.hasAttribute('disabled')) return;
+        selectType(type.id);
+      });
       paletteHost.appendChild(btn);
       itemButtons.set(type.id, btn);
     }
@@ -175,6 +183,49 @@ async function main(): Promise<void> {
     if (!selectedType) view.setGhost(null, null, false);
   }
 
+  /**
+   * Keep every build button honest about price and affordability.
+   *
+   * Recomputed on a slow cadence rather than every frame: stocks move at a few
+   * units a second and the DOM cost of rewriting twenty-five buttons is not
+   * worth paying sixty times a second (see design/07 — the same lesson the
+   * quarter labels taught).
+   */
+  function refreshPalette(): void {
+    const stocks = world.economy.stocks;
+    const signature =
+      `${Math.floor(stocks.timber)},${Math.floor(stocks.stone)},` +
+      `${Math.floor(stocks.iron)},${Math.floor(stocks.food)}`;
+    if (signature === paletteState) return;
+    paletteState = signature;
+
+    for (const [typeId, btn] of itemButtons) {
+      const type = buildingType(typeId);
+      const short = type.cost ? world.economy.shortfall(type.cost) : [];
+      const box = btn.querySelector('.cost');
+      if (!box) continue;
+
+      const bits: string[] = [];
+      for (const [res, n] of Object.entries(type.cost ?? {})) {
+        if (!n) continue;
+        const lacking = short.includes(res as 'timber');
+        bits.push(`<span class="${lacking ? 'short' : ''}">${n} ${res}</span>`);
+      }
+      if (type.jobs) bits.push(`<span class="jobs">${type.jobs} jobs</span>`);
+      if (type.houses) bits.push(`<span class="jobs">+${type.houses} people</span>`);
+      if (bits.length === 0) bits.push('<span>free</span>');
+
+      const html = bits.join('');
+      if (box.innerHTML !== html) box.innerHTML = html;
+
+      const affordable = short.length === 0;
+      btn.toggleAttribute('disabled', !affordable);
+      if (!affordable && selectedType === typeId) selectType(null);
+    }
+  }
+
+  let paletteState = '';
+
   // ---- Controls ----------------------------------------------------------
   const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -190,11 +241,19 @@ async function main(): Promise<void> {
     btnPlan.setAttribute('aria-pressed', String(mode === 'plan'));
   }
 
-  function setOverlay(on: boolean): void {
-    view.showOverlay = on;
+  const btnLand = el<HTMLButtonElement>('toggle-land');
+
+  /** The two overlays are one layer, so picking one puts the other down. */
+  function setOverlay(mode: 'character' | 'land' | null): void {
+    view.showOverlay = mode !== null;
+    if (mode) view.overlayMode = mode;
     view.markOverlayDirty();
-    btnOverlay.setAttribute('aria-pressed', String(on));
+    btnOverlay.setAttribute('aria-pressed', String(mode === 'character'));
+    btnLand.setAttribute('aria-pressed', String(mode === 'land'));
   }
+
+  const overlayNow = (): 'character' | 'land' | null =>
+    view.showOverlay ? view.overlayMode : null;
 
   function setPaused(on: boolean): void {
     paused = on;
@@ -419,7 +478,10 @@ async function main(): Promise<void> {
     view.clearGhost();
   }
 
-  btnOverlay.addEventListener('click', () => setOverlay(!view.showOverlay));
+  btnOverlay.addEventListener('click', () =>
+    setOverlay(overlayNow() === 'character' ? null : 'character'),
+  );
+  btnLand.addEventListener('click', () => setOverlay(overlayNow() === 'land' ? null : 'land'));
   btnStreets.addEventListener('click', () => setStreets(!view.showStreets));
   btnPause.addEventListener('click', () => setPaused(!paused));
 
@@ -565,7 +627,10 @@ async function main(): Promise<void> {
       else if (roadClass) setRoadClass(null);
       else selectType(null);
     } else if (e.key === 'Enter') finishRoad();
-    else if (e.key === 'c' || e.key === 'C') setOverlay(!view.showOverlay);
+    else if (e.key === 'c' || e.key === 'C')
+      setOverlay(overlayNow() === 'character' ? null : 'character');
+    else if (e.key === 'l' || e.key === 'L')
+      setOverlay(overlayNow() === 'land' ? null : 'land');
     else if (e.key === 's' || e.key === 'S') setStreets(!view.showStreets);
     else if (e.key === 'v' || e.key === 'V') setView(view.viewMode === 'iso' ? 'plan' : 'iso');
     else if (e.key === 'w' || e.key === 'W') setWarband(!warbandTool);
@@ -590,7 +655,10 @@ async function main(): Promise<void> {
   const rTerrDetail = el('r-terrdetail');
   const sTimber = el('s-timber');
   const sStone = el('s-stone');
+  const sIron = el('s-iron');
   const sFood = el('s-food');
+  const sJobs = el('s-jobs');
+  const sWorkers = el('s-workers');
   const rWhen = el('r-when');
   const rRival = el('r-rival');
   const rHeld = el('r-held');
@@ -610,9 +678,21 @@ async function main(): Promise<void> {
     const rates = world.economy.rates;
     sTimber.textContent = String(Math.floor(stocks.timber));
     sStone.textContent = String(Math.floor(stocks.stone));
+    sIron.textContent = String(Math.floor(stocks.iron));
     sFood.textContent = String(Math.floor(stocks.food));
+
+    // The workforce line, and the one number that matters: unfilled jobs mean
+    // works standing idle, which is the commonest reason a town stops growing.
+    const work = world.labour.report;
+    sJobs.textContent = `${work.filled}/${work.jobs}`;
+    sWorkers.textContent = String(work.workers);
+    sJobs.parentElement!.parentElement!.classList.toggle(
+      'short',
+      work.jobs > work.filled,
+    );
     // Falling stocks are flagged, since a trend matters more than a level.
     sTimber.parentElement!.classList.toggle('low', rates.timber <= 0 && stocks.timber < 30);
+    sIron.parentElement!.classList.toggle('low', rates.iron <= 0 && stocks.iron < 20);
     sStone.parentElement!.classList.toggle('low', rates.stone <= 0 && stocks.stone < 30);
     sFood.parentElement!.classList.toggle('low', rates.food < 0);
 
@@ -844,7 +924,15 @@ async function main(): Promise<void> {
         world.canPlace(selectedType, resolved.pos).ok,
         resolved.rotation,
       );
+      // What this site is actually worth, before you pay for it. Siting a works
+      // used to be a guess; now the catchment it would draw on is drawn under
+      // the cursor, and the reach it needs workers from is drawn round it.
+      view.setSitePreview(selectedType, resolved.pos);
+    } else {
+      view.setSitePreview(null, null);
     }
+
+    refreshPalette();
 
     const dt = ticker.deltaMS / 1000;
     if (!paused) world.updatePeople(dt);

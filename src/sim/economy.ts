@@ -1,5 +1,6 @@
 import { buildingType } from './buildings';
 import { harvestable, type Land } from './land';
+import type { Labour } from './labour';
 import { garrisonUpkeep, WARBAND_UPKEEP } from './military';
 import type { Terrain } from './terrain';
 import { OWNER_PLAYER, type Building } from './types';
@@ -21,24 +22,35 @@ import type { Standing } from './territory';
  * correct number of mills. You can see the wood, and you can see the idle mill.
  */
 
-export type Resource = 'timber' | 'stone' | 'food';
+export type Resource = 'timber' | 'stone' | 'food' | 'iron';
 
 export interface Stocks {
   timber: number;
   stone: number;
   food: number;
+  /**
+   * Smelted from ore, and the only thing fortification is built out of.
+   *
+   * Timber, stone and food are everywhere in some quantity; **ore is not**. It
+   * sits in a few seams, so iron is the resource you can be denied — and since
+   * walls and keeps are the only things that need it, a scarce seam on a
+   * frontier is worth a war. That is the join between the resource game and the
+   * territory game, and it is one line of catalogue data rather than a system.
+   */
+  iron: number;
 }
 
 /** What it costs to put a building up. */
 export type Cost = Partial<Stocks>;
 
 /** How far a producer reaches for its raw material, in metres. */
-const CATCHMENT = 120;
+export const CATCHMENT = 120;
 
 /** Scale factors turning raw potential into a sane rate per tick. */
 const TIMBER_RATE = 0.0022;
 const STONE_RATE = 0.0026;
 const FOOD_RATE = 0.0062;
+const IRON_RATE = 0.0034;
 
 /** A household eats this much per tick. */
 const FOOD_PER_HOUSEHOLD = 0.042;
@@ -60,12 +72,15 @@ export interface Standings {
 }
 
 export class Economy {
-  readonly stocks: Stocks = { timber: 120, stone: 80, food: 100 };
+  readonly stocks: Stocks = { timber: 120, stone: 80, food: 100, iron: 20 };
   /** Net change per tick, kept for the readout so the trend is visible. */
-  readonly rates: Stocks = { timber: 0, stone: 0, food: 0 };
+  readonly rates: Stocks = { timber: 0, stone: 0, food: 0, iron: 0 };
 
   /** What the army is costing, kept separate so the bill is legible. */
   upkeep = 0;
+
+  /** Share of the town's jobs that are actually filled, 0..1. */
+  staffed = 1;
 
   /** True when food ran out — growth stops until it doesn't. */
   hungry = false;
@@ -77,10 +92,12 @@ export class Economy {
     season: SeasonEffects = { harvest: 1, labour: 1, appetite: 1 },
     warbands = 0,
     territory: Standings | null = null,
+    workforce: Labour | null = null,
   ): void {
     let timber = 0;
     let stone = 0;
     let food = 0;
+    let iron = 0;
     let households = 0;
 
     for (const b of buildings) {
@@ -93,7 +110,13 @@ export class Economy {
       // forbidden — it simply does not pay, which is a thing you can see on
       // the map rather than a rule you have to be told.
       const here = territory?.standingAt(b.pos.x, b.pos.y);
-      const yield_ = here?.standing === 'held' ? HELD_YIELD : 1;
+      const held = here?.standing === 'held' ? HELD_YIELD : 1;
+
+      // **Staffing is the second half of every yield.** A works produces what
+      // its land holds *times how well it is manned*, so a sawmill in the
+      // deepest wood on the map is worth nothing if nobody can walk to it. That
+      // is the trade that makes siting a decision rather than a formality.
+      const yield_ = held * (workforce ? workforce.staffingOf(b) : 1);
 
       switch (type.id) {
         case 'sawmill':
@@ -104,6 +127,9 @@ export class Economy {
           break;
         case 'farm':
           food += harvestable(land.arable, b.pos, CATCHMENT) * FOOD_RATE * yield_;
+          break;
+        case 'mine':
+          iron += harvestable(land.ore, b.pos, CATCHMENT) * IRON_RATE * yield_;
           break;
         case 'watermill':
           // A mill grinds what the river gives it, which is the payoff for the
@@ -118,8 +144,15 @@ export class Economy {
     // the player does (design/00, Axis 7).
     timber *= season.labour;
     stone *= season.labour;
+    iron *= season.labour;
     food *= season.harvest;
     const eaten = households * FOOD_PER_HOUSEHOLD * season.appetite;
+
+    this.staffed = workforce
+      ? workforce.report.jobs > 0
+        ? workforce.report.filled / workforce.report.jobs
+        : 1
+      : 1;
 
     // The standing army. Continuous, never repaid, and unaffected by the
     // season — the one bill that does not care whether the harvest came in.
@@ -129,10 +162,12 @@ export class Economy {
 
     this.rates.timber = timber;
     this.rates.stone = stone;
+    this.rates.iron = iron;
     this.rates.food = food - eaten - this.upkeep;
 
     this.stocks.timber = Math.min(9999, this.stocks.timber + timber);
     this.stocks.stone = Math.min(9999, this.stocks.stone + stone);
+    this.stocks.iron = Math.min(9999, this.stocks.iron + iron);
     this.stocks.food = Math.min(9999, this.stocks.food + this.rates.food);
 
     // Running out stops the town growing, but never destroys anything: `00`
@@ -149,14 +184,26 @@ export class Economy {
     return (
       this.stocks.timber >= (cost.timber ?? 0) &&
       this.stocks.stone >= (cost.stone ?? 0) &&
-      this.stocks.food >= (cost.food ?? 0)
+      this.stocks.food >= (cost.food ?? 0) &&
+      this.stocks.iron >= (cost.iron ?? 0)
     );
+  }
+
+  /** What a cost is short of, for the build UI. Empty when affordable. */
+  shortfall(cost: Cost): Resource[] {
+    const missing: Resource[] = [];
+    if (this.stocks.timber < (cost.timber ?? 0)) missing.push('timber');
+    if (this.stocks.stone < (cost.stone ?? 0)) missing.push('stone');
+    if (this.stocks.food < (cost.food ?? 0)) missing.push('food');
+    if (this.stocks.iron < (cost.iron ?? 0)) missing.push('iron');
+    return missing;
   }
 
   spend(cost: Cost): void {
     this.stocks.timber -= cost.timber ?? 0;
     this.stocks.stone -= cost.stone ?? 0;
     this.stocks.food -= cost.food ?? 0;
+    this.stocks.iron -= cost.iron ?? 0;
   }
 }
 

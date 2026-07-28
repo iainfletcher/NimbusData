@@ -11,6 +11,7 @@ import { Calendar, type Season } from './calendar';
 import { Rival } from './rival';
 import { Military, MUSTER_COOLDOWN, MUSTER_COST, type Warband } from './military';
 import { Chronicle } from './chronicle';
+import { Labour, LABOUR_INTERVAL } from './labour';
 import { Quarters, QUARTER_INTERVAL } from './quarters';
 import { Economy, roadCost } from './economy';
 import { computeLand, type Land } from './land';
@@ -76,6 +77,8 @@ export class World {
   readonly calendar = new Calendar();
   readonly chronicle = new Chronicle();
   readonly quarters = new Quarters();
+  readonly labour = new Labour();
+  private labourCooldown = 0;
   private quarterCooldown = 0;
   private wasHungry = false;
   private seenTypes = new Set<string>();
@@ -87,7 +90,8 @@ export class World {
   captured = 0;
   /** Per-keep muster cooldowns, keyed by building id. */
   private musterReady = new Map<number, number>();
-  private land: Land;
+  /** What the ground is worth. Public so the overlay can draw it. */
+  land: Land;
   private territoryCooldown = 0;
   private militaryCooldown = 0;
   /**
@@ -431,6 +435,15 @@ export class World {
 
     for (const b of this.buildings) b.age++;
 
+    // Who is working where. Runs ahead of the economy, because the economy is
+    // now a function of it.
+    if (this.labourCooldown > 0) {
+      this.labourCooldown--;
+    } else {
+      this.labourCooldown = LABOUR_INTERVAL;
+      this.labour.update(this.buildings);
+    }
+
     this.economy.update(
       this.buildings,
       this.land,
@@ -438,6 +451,7 @@ export class World {
       this.calendar.effects,
       this.military.bandsOf(OWNER_PLAYER).length,
       this.territory,
+      this.labour,
     );
 
     // The rival only proposes; the world decides whether the ground allows it.

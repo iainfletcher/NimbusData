@@ -99,6 +99,10 @@ function freshWorld(seed = 20260727) {
   world.economy.stocks.timber = 9000;
   world.economy.stocks.stone = 9000;
   world.economy.stocks.food = 9000;
+  // Iron too, since fortification now costs it — otherwise `canPlace` refuses a
+  // keep everywhere on the map and half these trials report "no ground", which
+  // is what happened the first time iron was added.
+  world.economy.stocks.iron = 9000;
   return world;
 }
 
@@ -405,6 +409,15 @@ claim(
         if (p) world.place(id, p);
       }
 
+      // Housing on both sides. Since production is now staffing × land, a works
+      // with nobody to man it yields zero whatever the ground is worth — and
+      // this trial measures the *ground*, so the labour has to be held constant.
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const p = siteNear(world, anchor.x + Math.cos(a) * 46, anchor.y + Math.sin(a) * 46, 'cottage');
+        if (p) world.place('cottage', p);
+      }
+
       run(world, 40);
       const r = world.economy.rates;
       return { total: r.timber + r.stone + Math.max(0, r.food), rates: r };
@@ -573,6 +586,117 @@ claim(
     // The name must survive; noticing the drift is a bonus that depends on the
     // field actually flipping, which a green may or may not manage.
     return !!same;
+  },
+);
+
+// ---- Labour: production is people, not buildings ---------------------------
+
+claim(
+  'A works with nobody to man it produces nothing',
+  'labour.ts — a works yields what its land holds TIMES how well it is staffed',
+  (note) => {
+    // The same sawmill twice, on ground with wood: once alone, once with houses
+    // beside it. Only the labour differs.
+    const measure = (withHousing) => {
+      const world = freshWorld();
+      world.rivalActive = false;
+
+      // Find the best timber ground on the map so the land is not the variable.
+      let best = null;
+      let bestValue = 0;
+      for (let cy = 8; cy < 248; cy += 4) {
+        for (let cx = 8; cx < 248; cx += 4) {
+          const v = world.land.timber[cy * 256 + cx];
+          if (v > bestValue) {
+            bestValue = v;
+            best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+          }
+        }
+      }
+      if (!best) return null;
+
+      const at = siteNear(world, best.x, best.y, 'sawmill');
+      if (!at || !world.place('sawmill', at).ok) return null;
+
+      if (withHousing) {
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2;
+          const p = siteNear(world, at.x + Math.cos(a) * 40, at.y + Math.sin(a) * 40, 'cottage');
+          if (p) world.place('cottage', p);
+        }
+      }
+
+      run(world, 30);
+      const mill = world.buildings.find((b) => b.typeId === 'sawmill');
+      return { timber: world.economy.rates.timber, staffing: world.labour.staffingOf(mill) };
+    };
+
+    const alone = measure(false);
+    const manned = measure(true);
+    if (!alone || !manned) return note('could not site the mill'), false;
+
+    note(
+      `unmanned: ${(alone.staffing * 100).toFixed(0)}% staffed, ${alone.timber.toFixed(3)}/tick · ` +
+        `manned: ${(manned.staffing * 100).toFixed(0)}%, ${manned.timber.toFixed(3)}/tick`,
+    );
+    return alone.timber === 0 && manned.timber > 0;
+  },
+);
+
+claim(
+  'Ore exists in a few seams, and a mine on one produces iron',
+  'land.ts — ore is scarce and lumpy on purpose, so a seam is worth fighting over',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    let cells = 0;
+    let best = null;
+    let bestValue = 0;
+    for (let cy = 0; cy < 256; cy++) {
+      for (let cx = 0; cx < 256; cx++) {
+        const v = world.land.ore[cy * 256 + cx];
+        if (v > 0.05) cells++;
+        if (v > bestValue) {
+          bestValue = v;
+          best = { x: (cx + 0.5) * 4, y: (cy + 0.5) * 4 };
+        }
+      }
+    }
+
+    const share = (cells / (256 * 256)) * 100;
+    if (!best) return note('no ore anywhere on the map'), false;
+
+    const at = siteNear(world, best.x, best.y, 'mine');
+    if (!at || !world.place('mine', at).ok) return note('could not site a mine'), false;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const p = siteNear(world, at.x + Math.cos(a) * 40, at.y + Math.sin(a) * 40, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    run(world, 30);
+
+    note(`ore on ${share.toFixed(1)}% of the map; a mine on the best seam yields ${world.economy.rates.iron.toFixed(3)} iron/tick`);
+    // Scarce, but not absent — and a mine on it must actually pay.
+    return share > 0.2 && share < 14 && world.economy.rates.iron > 0;
+  },
+);
+
+claim(
+  'Fortification cannot be built without iron',
+  'the join between the resource game and the territory game',
+  (note) => {
+    const world = freshWorld();
+    const at = siteNear(world, C, C, 'keep');
+    world.economy.stocks.iron = 0;
+    if (!at) return note('no ground'), false;
+
+    const refused = world.place('keep', at);
+    world.economy.stocks.iron = 500;
+    const allowed = world.place('keep', at);
+
+    note(`without iron: ${refused.ok ? 'built anyway' : refused.reason}; with iron: ${allowed.ok ? 'built' : allowed.reason}`);
+    return !refused.ok && allowed.ok;
   },
 );
 

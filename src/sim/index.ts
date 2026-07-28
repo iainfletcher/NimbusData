@@ -20,6 +20,7 @@ export * from './plans';
 export * from './calendar';
 export * from './military';
 export * from './chronicle';
+export * from './labour';
 export * from './quarters';
 export * from './rival';
 export * from './world';

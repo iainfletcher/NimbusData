@@ -209,3 +209,25 @@ export const GROUND_SEASON: Record<string, { tint: number; mix: number }> = {
 export function toward(colour: number, target: number, t: number): number {
   return mix(colour, target, t);
 }
+
+/**
+ * Resource colours for the land overlay.
+ *
+ * The land has always held timber, stone, arable and ore, and none of it was
+ * visible — so siting a works was a guess dressed up as a decision. These are
+ * the four, keyed to what they are rather than to a ramp: green for wood, grey
+ * for rock, wheat for arable, rust for ore.
+ */
+export const RESOURCE_COLOURS: Record<string, number> = {
+  timber: 0x3f7a3a,
+  stone: 0x8d8d94,
+  arable: 0xc9a83c,
+  ore: 0xb1552c,
+};
+
+export const RESOURCE_LABELS: Record<string, string> = {
+  timber: 'Timber',
+  stone: 'Stone',
+  arable: 'Arable',
+  ore: 'Ore',
+};
