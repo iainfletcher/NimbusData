@@ -38,6 +38,15 @@ export interface Fabric {
   /** Traffic per route cell, exposed for debugging. */
   traffic: Float32Array;
   routeCells: number;
+  /**
+   * The cost field the paths were found over, kept so anything else that needs
+   * to get across town can use the same ground rules.
+   *
+   * It is the fabric's own working state and it costs nothing to hang on to —
+   * and without it, everything else that has to move (people on errands, most
+   * obviously) would either duplicate the field or walk through walls.
+   */
+  cost: Float32Array;
 }
 
 export function emptyFabric(): Fabric {
@@ -45,7 +54,37 @@ export function emptyFabric(): Fabric {
     paths: [],
     traffic: new Float32Array(ROUTE_CELLS * ROUTE_CELLS),
     routeCells: ROUTE_CELLS,
+    cost: new Float32Array(ROUTE_CELLS * ROUTE_CELLS).fill(IMPASSABLE),
   };
+}
+
+/**
+ * A walkable route between two points, over the same cost field the streets
+ * were laid out on.
+ *
+ * This is what lets somebody cross the town without walking through a house:
+ * the field already knows what is blocked, what is cheap because it is paved,
+ * and what is expensive because it is steep. Returns null when there is no way
+ * through — which is a real answer, not a failure.
+ */
+export function routeOver(fabric: Fabric, from: Vec2, to: Vec2): Vec2[] | null {
+  const start = nearestOpenCell(fabric.cost, from);
+  const goal = nearestOpenCell(fabric.cost, to);
+  if (start < 0 || goal < 0) return null;
+  if (start === goal) return [{ ...from }, { ...to }];
+
+  const cells = findPath(fabric.cost, start, goal);
+  if (!cells || cells.length < 2) return null;
+
+  // Smoothed for the same reason the streets are: an A* result is a staircase,
+  // and a person walking a staircase reads as a glitch rather than as a walk.
+  const points = cells.map((c) => cellCentre(c));
+  const smoothed = smoothPath(points, points.map(() => 1));
+
+  // Doorstep to doorstep — and the doorstep is where the route *ends*, not the
+  // building's centre. Walking to the middle of a sawmill means walking through
+  // its wall and standing inside it, which is both wrong and drawn.
+  return smoothed.map((p) => ({ x: p.x, y: p.y }));
 }
 
 /** Traffic → half-width. Deliberately chunky: a town has lanes, streets, and a high street. */
@@ -103,7 +142,7 @@ export function generateFabric(
     if (smoothed.length >= 2) paths.push(smoothed);
   }
 
-  return { paths, traffic, routeCells: ROUTE_CELLS };
+  return { paths, traffic, routeCells: ROUTE_CELLS, cost };
 }
 
 // ---------------------------------------------------------------------------

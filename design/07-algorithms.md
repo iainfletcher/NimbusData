@@ -269,6 +269,56 @@ Two lessons, and the second is the general one:
    picture of a healthy town. The screenshot that found this was the first one
    deliberately set up to have problems in it.
 
+### Reusing the street cost field to move people, and the three bugs it took
+
+Giving the crowd real errands needed one thing the code did not have: a way for a
+person to get from a house to a well without walking through a wall. It needed no
+new algorithm at all. `fabric.ts` already builds a cost field over an 8m grid —
+water impassable, slope expensive, frontages discounted, building footprints
+solid — and already A\*s over it to lay the streets out. Keeping that field on the
+`Fabric` object instead of throwing it away turned "route a person across town"
+into six lines (`routeOver`).
+
+Three things about doing it that are worth writing down.
+
+**Cache on the journey, not on the person.** A sawmill with nine jobs has nine
+people walking the same line. Pathing it nine times is nine times the work for
+exactly the same picture, so the route is computed once per *journey* and shared;
+a hundred and fifty walkers cost at most a few dozen A\* runs. Pathing is also
+budgeted to a few per frame, but only when a route actually has to be computed —
+budgeting cached lookups would have been a throttle protecting nothing.
+
+**Route to the doorstep, not to the address.** The first version appended the two
+raw endpoints to the path, on the reasoning that an errand starts and ends at a
+building. It does, and the building's *centre* is inside its walls: people walked
+into the middle of the sawmill and stood there. The A\* endpoints are open cells
+adjacent to the building, which is exactly what a doorstep is.
+
+**And the one that actually mattered: a rebuild is not a restart.** The street
+network is regenerated whenever a building is placed or a cottage grows, which in
+a living town is every few seconds, and the crowd was rebuilt with it — every
+figure re-seeded with a fresh random pause and no route. The result was a town of
+ninety people with **one of them moving**, and it took direct measurement to see
+it, because a still screenshot of a stationary crowd looks like a still
+screenshot of a walking crowd. Three separate defects were hiding under that one
+symptom:
+
+1. Everybody was re-created on every rebuild, so nobody's pause ever ran out.
+2. Ambient walkers were all created at the origin and then sent to *the nearest
+   route*, which for every one of them was the same route — the whole ambient
+   half of the crowd walked one lane in single file.
+3. People promoted from ambient to errand-running kept the long ambient route
+   they were already on and never re-pathed.
+
+The fix in each case is the same shape: **change as little as possible about
+somebody who is already walking.** Keep them; hand them a new errand only when
+they next arrive somewhere; and clear their route immediately only for the one
+change they cannot walk out of, which is gaining or losing an errand entirely.
+
+The lesson generalises past this file. *Anything continuous that gets rebuilt on
+a discrete event needs an explicit answer to "what happens to the things that
+were mid-flight", and "re-seed them" is almost never it.*
+
 ### The lighting change that mattered as much as the grammar
 
 Worth recording separately, because it was cheaper than any algorithm here and

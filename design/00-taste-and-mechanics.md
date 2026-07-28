@@ -182,6 +182,51 @@ underneath.
 is its throughput. A starved chain is a visibly thin stream. That is the entire
 debugging interface, it needs no numbers, and it's pretty.
 
+#### Built — and the second half of "decoration = carriers" was doing nothing
+
+The rule survives intact, and it turns out it was being applied too literally.
+
+"If you delete every carrier animation the simulation is unchanged" is a
+constraint on what the figures may **affect**. It was being read as a licence for
+them not to **mean** anything either: the people in the streets had, in the words
+of their own source file, "no needs, no errands and no intelligence". They walked
+whichever road segment they were nearest, turned round at the end, and picked
+another. The town looked inhabited and told you nothing.
+
+Both halves are now true at once, which is the interesting part:
+
+> **Every journey on the street is one the simulation has already decided on.
+> Nobody is going anywhere the town was not already sending them — and nobody
+> carries anything, blocks anything, or can fail to arrive.**
+
+A figure walking to the sawmill is a worker `labour.ts` matched to that sawmill.
+A figure at the well is a household `needs.ts` says draws its water there. Delete
+every one of them and the simulation is still unchanged, because the arrow only
+points one way: the crowd *reads* the decisions, it does not make them.
+
+What that buys is the thing this document keeps asking for and had been settling
+for a still picture of — Axis 3's "buildings express their own state posturally",
+arrived at from the street rather than from the building:
+
+- **An unstaffed works has nobody walking to it.** Not a warning. An absence.
+- **A quarter with no well sends nobody down to the river.**
+- **An empty town has empty streets**, because the crowd is sized by *population*
+  rather than by how much you have built. The old rule was three figures per
+  building, which meant a town of empty houses looked exactly as alive as a full
+  one — the single most misleading thing the view did.
+
+Two figures carry a prop and two do not, on purpose: a pail says *water* and a
+basket says *market* at any zoom, while a churchgoer and a drinker carry nothing
+in life either. Inventing a hymn-book to make the set symmetrical would be
+labelling rather than depicting, and where somebody is going is legible from
+where they end up — a knot of figures at the church door is a congregation
+without anybody holding a sign.
+
+**Where the smarts stop, deliberately.** They do not queue, avoid each other,
+choose between two markets by how busy one is, or carry goods that exist. Every
+one of those is simulation whose output nobody can see, which is the same test
+that killed carrier logistics in the first place.
+
 ### Axis 3 — How deep are production chains?
 
 Settlers II runs ~5 deep for weapons. Anno is worse. Polytopia has none.

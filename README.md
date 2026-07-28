@@ -68,7 +68,7 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
   yards, churchyards, orchards and greens — none of it placed by the player
 - Place, remove, pan, zoom, pause, and overlays for character and streets
 
-- Ambient people walking the network, depth-sorted against buildings
+- People walking the network, depth-sorted against buildings
 - Cast shadows, contact occlusion and sun-lit terrain relief
 - Paving a worn path into a road, keeping its wander
 - Market stalls, open-field strips, livestock
@@ -129,6 +129,15 @@ Milestones 0–3, 5 and 6 are done, and 4 is largely done (`design/06` §4):
 - A goal panel that says what the town is working toward in plain words, and a
   palette that shows locked buildings with the age that brings them, because the
   arc should be a promise rather than a secret
+
+- **People with errands.** Every journey in the street is one the simulation had
+  already decided on: a figure walking to the sawmill is a worker matched to that
+  sawmill, a figure at the well is a household that draws its water there. They
+  route over the same cost field the streets were laid out on, so they go round
+  buildings rather than through them, and they carry a pail or a basket when the
+  errand has one. They still change nothing — delete every one and the simulation
+  is identical — but an unstaffed works is now legible as an *empty road to it*,
+  and an empty town has empty streets
 
 **Not yet built:** planned-fabric amplification (`design/05` §3); broadening
 cultural output beyond coherence (`design/01` §8); anything beyond the medieval

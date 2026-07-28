@@ -219,18 +219,35 @@ export class Terrain {
    * the sea's own surface is the sea.
    */
   freshWaterNear(at: Vec2, radius: number): boolean {
+    return this.nearestFreshWater(at, radius) !== null;
+  }
+
+  /**
+   * The closest drinkable water within reach, or null.
+   *
+   * `needs.ts` only wants the yes/no, but the people walking the streets want
+   * somewhere to actually go: a household that draws from the river should be
+   * seen going down to the river. Same scan, and it returns the nearest hit
+   * rather than the first, so the errand goes to the bank you would use.
+   */
+  nearestFreshWater(at: Vec2, radius: number): Vec2 | null {
     const step = CELL_SIZE;
+    let best: Vec2 | null = null;
+    let bestD2 = Infinity;
+
     for (let dy = -radius; dy <= radius; dy += step) {
       for (let dx = -radius; dx <= radius; dx += step) {
-        if (dx * dx + dy * dy > radius * radius) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > radius * radius || d2 >= bestD2) continue;
         const x = at.x + dx;
         const y = at.y + dy;
         if (!this.isWater(x, y)) continue;
         if (this.waterAt(x, y) <= WATER_LEVEL + 0.2) continue;
-        return true;
+        bestD2 = d2;
+        best = { x, y };
       }
     }
-    return false;
+    return best;
   }
 
   /** Upstream catchment draining through here, in cells. */

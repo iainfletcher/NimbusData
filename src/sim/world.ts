@@ -4,7 +4,7 @@ import { buildingType } from './buildings';
 import { emptyFabric, generateFabric, orientToFabric, type Fabric, type StreetVertex } from './fabric';
 import { closestPointOnSegment, nearestRoad, type Road, type RoadClass, type RoadHit } from './roads';
 import { emptyDecor, generateDecor, type Decor } from './decor';
-import { Crowd } from './people';
+import { Crowd, crowdPlan, type Journey } from './people';
 import { Conductance, openGround } from './conductance';
 import { Territory } from './territory';
 import { Calendar, type Season } from './calendar';
@@ -430,7 +430,7 @@ export class World {
       this.seed,
     );
     // People walk the network, so they have to be rehomed when it changes.
-    this.crowd.reset(this.roads, this._fabric, this.buildings.length, this.seed);
+    this.resetCrowd();
     // Character travels the same ground people do, so the cost field follows the
     // fabric too — and the character field has to be redone once it changes.
     this.conductance = Conductance.build(this.terrain, this.roads, this._fabric);
@@ -461,6 +461,11 @@ export class World {
     } else {
       this.labourCooldown = LABOUR_INTERVAL;
       this.labour.update(this.buildings, this.populace.occupancy);
+      // Who is out of doors follows who lives here. Sized rather than re-seeded,
+      // so a town filling up shows a few more people rather than a jump cut.
+      this.crowd.resize(
+        crowdPlan(this.populace.report.population, this.rivalBuildingCount()),
+      );
     }
 
     // What every house can reach. Runs before the populace, because service is
@@ -945,6 +950,42 @@ export class World {
 
   updatePeople(dtSeconds: number): void {
     this.crowd.update(dtSeconds);
+  }
+
+  /**
+   * Send the town's people out on the errands the town is actually making.
+   *
+   * Nothing here is invented: the work journeys are the pairs `labour.ts`
+   * matched, and the household journeys are the providers `needs.ts` found. The
+   * crowd is a *rendering of those two systems*, which is why it is worth having
+   * — an unstaffed works is legible as an empty road to it (`people.ts`).
+   *
+   * Re-planned whenever the fabric changes, and on the slow clock when it does
+   * not, because who works where and who draws water where both move as the
+   * town grows and a crowd walking last week's errands is worse than no crowd.
+   */
+  private resetCrowd(): void {
+    const journeys: Journey[] = [];
+    for (const c of this.labour.commutes) {
+      journeys.push({ from: c.from, to: c.to, kind: 'work' });
+    }
+    for (const e of this.needs.errands) {
+      journeys.push({ from: e.from, to: e.to, kind: e.need });
+    }
+
+    this.crowd.reset(
+      this.roads,
+      this._fabric,
+      journeys,
+      crowdPlan(this.populace.report.population, this.rivalBuildingCount()),
+      this.seed,
+    );
+  }
+
+  private rivalBuildingCount(): number {
+    let n = 0;
+    for (const b of this.buildings) if (b.owner !== OWNER_PLAYER) n++;
+    return n;
   }
 
   private markFabricDirty(): void {

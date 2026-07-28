@@ -1,6 +1,6 @@
 import { buildingType } from './buildings';
 import type { Terrain } from './terrain';
-import { OWNER_PLAYER, type Building } from './types';
+import { OWNER_PLAYER, type Building, type Vec2 } from './types';
 
 /**
  * What a household needs, and whether it can reach it.
@@ -75,11 +75,31 @@ export interface NeedsReport {
   worst: Need | null;
 }
 
+/** A journey a household actually makes, and what for. */
+export interface NeedErrand {
+  from: Vec2;
+  to: Vec2;
+  need: Need;
+}
+
+/** Enough errands to fill the streets; past this it is the same picture. */
+const MAX_ERRANDS = 400;
+
 export class Needs {
   /** Service level per house, 0..1, keyed by building id. */
   private served = new Map<number, number>();
   /** Which needs each house is short of, for the map markers. */
   readonly missing = new Map<number, Need[]>();
+  /**
+   * Where each household goes for each need it can reach.
+   *
+   * Kept because a need that is *met* is otherwise completely invisible — the
+   * markers only show what is missing, so a well-run town looks identical to an
+   * empty field. These are what the people in the streets are walking (see
+   * `people.ts`), which turns the whole system into something you watch rather
+   * than something you are told.
+   */
+  readonly errands: NeedErrand[] = [];
 
   readonly report: NeedsReport = {
     short: { water: 0, faith: 0, market: 0, ale: 0 },
@@ -102,6 +122,7 @@ export class Needs {
   ): void {
     this.served.clear();
     this.missing.clear();
+    this.errands.length = 0;
     for (const need of NEEDS) this.report.short[need] = 0;
 
     const houses: Building[] = [];
@@ -121,7 +142,13 @@ export class Needs {
       const lacking: Need[] = [];
 
       for (const need of demanded) {
-        if (this.reaches(house, need, providers.get(need)!, terrain)) continue;
+        const at = this.reaches(house, need, providers.get(need)!, terrain);
+        if (at) {
+          if (this.errands.length < MAX_ERRANDS) {
+            this.errands.push({ from: { ...house.pos }, to: at, need });
+          }
+          continue;
+        }
         lacking.push(need);
         this.report.short[need]++;
       }
@@ -144,24 +171,41 @@ export class Needs {
     this.report.worst = worst;
   }
 
+  /** Where this house goes for this need, or null if it cannot get there. */
   private reaches(
     house: Building,
     need: Need,
     providers: readonly Building[],
     terrain: Terrain,
-  ): boolean {
+  ): Vec2 | null {
     const reach = NEED_REACH[need];
+
+    // Nearest provider, not first: which building a household actually uses is
+    // the one it walks to, and that has to be the same answer every tick or the
+    // errands would flicker between two churches.
+    let best: Vec2 | null = null;
+    let bestD = Infinity;
+    for (const p of providers) {
+      const d = Math.hypot(p.pos.x - house.pos.x, p.pos.y - house.pos.y);
+      if (d <= reach && d < bestD) {
+        bestD = d;
+        best = { ...p.pos };
+      }
+    }
 
     // Fresh water is a *place*, not a building. A house beside a stream has no
     // use for a well, which makes the river the game already simulates worth
     // building next to — the hydrology finally pays for itself in the economy
-    // rather than only in the view.
-    if (need === 'water' && terrain.freshWaterNear(house.pos, reach)) return true;
-
-    for (const p of providers) {
-      if (Math.hypot(p.pos.x - house.pos.x, p.pos.y - house.pos.y) <= reach) return true;
+    // rather than only in the view. A well still wins if it is closer.
+    if (need === 'water') {
+      const bank = terrain.nearestFreshWater(house.pos, reach);
+      if (bank) {
+        const d = Math.hypot(bank.x - house.pos.x, bank.y - house.pos.y);
+        if (d < bestD) return bank;
+      }
     }
-    return false;
+
+    return best;
   }
 
   /** How well a house is served, 0..1. Unknown houses count as unserved. */

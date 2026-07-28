@@ -14,6 +14,7 @@ import {
   CATCHMENT,
   RESOURCES,
   WALK_TO_WORK,
+  type ErrandKind,
   type Person,
   type ProblemKind,
   type Season,
@@ -1120,6 +1121,25 @@ export class WorldView {
     ]).fill(colour);
 
     g.circle(head.x, head.y, 0.5).fill(SKIN);
+
+    // What they are out for, carried in one hand.
+    //
+    // The tool goes over the shoulder and the pail hangs low, which is the whole
+    // difference between "somebody walking to work" and "somebody fetching
+    // water" at a glance — and it is the only place in the game where the
+    // *reason* for a journey is drawn rather than inferred.
+    const carried = CARRIED[person.errand];
+    if (!carried) return;
+
+    const high = person.errand === 'work';
+    const hand = this.project(
+      person.pos.x,
+      person.pos.y,
+      ground + (high ? 2.1 : 1.25) + bob,
+    );
+    const side = halfW + 0.24;
+    g.rect(hand.x + side - carried.w / 2, hand.y - carried.h / 2, carried.w, carried.h)
+      .fill(carried.colour);
   }
 
   /** Small deterministic per-building variation, so a terrace isn't clones. */
@@ -2234,6 +2254,22 @@ function edgeColour(a: number | null, b: number | null): number {
 
 const CLOTHING = [0x6b4a3a, 0x4a5568, 0x7a6a52, 0x8a4a42, 0x55613f, 0x6a5a6a];
 const SKIN = 0xc9a887;
+
+/**
+ * What somebody on an errand is carrying.
+ *
+ * Two of the four get a prop and two do not, on purpose. A pail says *water* and
+ * a basket says *market* at a glance and at any zoom; a churchgoer and a
+ * drinker carry nothing in real life either, and inventing a hymn-book to make
+ * the set symmetrical would be labelling rather than depicting. Where the crowd
+ * is going is readable from the *destination* anyway — a knot of figures at the
+ * church door is a congregation without anybody holding a sign.
+ */
+const CARRIED: Partial<Record<ErrandKind, { colour: number; w: number; h: number }>> = {
+  water: { colour: 0x9fb0bd, w: 0.30, h: 0.36 },
+  market: { colour: 0xb08d5a, w: 0.38, h: 0.28 },
+  work: { colour: 0x4a3a2c, w: 0.16, h: 0.9 },
+};
 /**
  * Why a building is not working. Amber for people, grey for land, red for
  * ground that is not ours, blue for a household that cannot reach what it

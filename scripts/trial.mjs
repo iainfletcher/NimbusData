@@ -1084,6 +1084,258 @@ claim(
   },
 );
 
+// ---- The crowd is a readout, not wallpaper ---------------------------------
+
+claim(
+  'Every journey in the street is one the simulation already decided on',
+  'people.ts — the crowd is a rendering of labour and needs, not invented traffic',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    const heart = siteNear(world, C, C, 'sawmill');
+    if (!heart || !world.place('sawmill', heart).ok) return note('no ground'), false;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 34, heart.y + Math.sin(a) * 34, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    const well = siteNear(world, heart.x + 26, heart.y - 20, 'well');
+    if (well) world.place('well', well);
+
+    run(world, 400);
+    world.rebuildFabric();
+
+    // Every errand a walker is on must correspond to a pairing one of the two
+    // systems made. Checked by endpoint, since that is the whole claim: nobody
+    // is going anywhere the town was not already sending them.
+    const legal = new Set();
+    for (const c of world.labour.commutes) {
+      legal.add(`work|${c.from.x.toFixed(1)},${c.from.y.toFixed(1)}`);
+    }
+    for (const e of world.needs.errands) {
+      legal.add(`${e.need}|${e.from.x.toFixed(1)},${e.from.y.toFixed(1)}`);
+    }
+
+    const bogus = world.crowd.journeys.filter(
+      (j) => !legal.has(`${j.kind}|${j.from.x.toFixed(1)},${j.from.y.toFixed(1)}`),
+    ).length;
+
+    const walkers = world.crowd.people;
+    const errands = walkers.filter((p) => p.errand !== 'wander');
+    const kinds = new Set(errands.map((p) => p.errand));
+    note(
+      `${world.crowd.journeys.length} journeys, ${bogus} of them invented; ` +
+        `${errands.length}/${walkers.length} walkers on one; ` +
+        `kinds: ${[...kinds].sort().join(', ') || 'none'}`,
+    );
+    return (
+      bogus === 0 &&
+      walkers.length > 0 &&
+      errands.length === walkers.length &&
+      kinds.has('work') &&
+      kinds.has('water')
+    );
+  },
+);
+
+claim(
+  'Nobody walks to a works nobody staffs',
+  'people.ts — an unstaffed works is legible as an empty road to it',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    // A hamlet with its own mill, and a second mill far out of walking range.
+    const heart = siteNear(world, C, C, 'sawmill');
+    if (!heart || !world.place('sawmill', heart).ok) return note('no ground'), false;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 34, heart.y + Math.sin(a) * 34, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    const lonely = siteNear(world, C - 340, C + 300, 'sawmill');
+    if (!lonely || !world.place('sawmill', lonely).ok) return note('no second site'), false;
+
+    run(world, 400);
+    world.rebuildFabric();
+
+    const near = (a, b, r) => Math.hypot(a.x - b.x, a.y - b.y) < r;
+    const toLonely = world.labour.commutes.filter((c) => near(c.to, lonely, 6)).length;
+    const toHeart = world.labour.commutes.filter((c) => near(c.to, heart, 6)).length;
+
+    note(
+      `${toHeart} commute(s) to the mill in the hamlet, ${toLonely} to the one ` +
+        `${Math.round(Math.hypot(lonely.x - heart.x, lonely.y - heart.y))}m away`,
+    );
+    return toHeart > 0 && toLonely === 0;
+  },
+);
+
+claim(
+  'A household on the river walks to the river, and one with a well walks to the well',
+  'needs.ts — water is a place before it is a building, and the errand shows which',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    const dry = drySiteNear(world, C - 200, C + 200, 'cottage');
+    if (!dry) return note('no dry ground'), false;
+    const dryHouse = world.place('cottage', dry).building;
+    const well = siteNear(world, dry.x + 20, dry.y + 16, 'well');
+    if (!well || !world.place('well', well).ok) return note('nowhere for a well'), false;
+
+    // And one deliberately beside water.
+    let wet = null;
+    for (let r = 0; r < 700 && !wet; r += 12) {
+      for (let i = 0; i < 24 && !wet; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        const p = { x: C + Math.cos(a) * r, y: C + Math.sin(a) * r };
+        if (world.canPlace('cottage', p).ok && world.terrain.freshWaterNear(p, 40)) wet = p;
+      }
+    }
+    if (!wet) return note('no waterside ground'), false;
+    const wetHouse = world.place('cottage', wet).building;
+
+    run(world, 40);
+
+    const errandFrom = (b) =>
+      world.needs.errands.find(
+        (e) => e.need === 'water' && Math.hypot(e.from.x - b.pos.x, e.from.y - b.pos.y) < 1,
+      );
+    const dryErrand = errandFrom(dryHouse);
+    const wetErrand = errandFrom(wetHouse);
+    if (!dryErrand || !wetErrand) return note('a house had no water errand at all'), false;
+
+    const toWell = Math.hypot(dryErrand.to.x - well.x, dryErrand.to.y - well.y) < 1;
+    const toWater = world.terrain.isWater(wetErrand.to.x, wetErrand.to.y);
+
+    note(`dry house → ${toWell ? 'the well' : 'somewhere else'}; waterside house → ${toWater ? 'the water' : 'somewhere else'}`);
+    return toWell && toWater;
+  },
+);
+
+claim(
+  'An empty town has empty streets',
+  'people.ts — the crowd is sized by population, not by how much you have built',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+    world.economy.stocks.food = 0; // Nobody will ever move in.
+
+    const heart = siteNear(world, C, C, 'cottage');
+    if (!heart) return note('no ground'), false;
+    for (let i = 0; i < 10; i++) {
+      const p = siteNear(world, heart.x + i * 14, heart.y, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    run(world, 120);
+    world.rebuildFabric();
+    const empty = world.crowd.people.length;
+    const emptyPop = world.populace.report.population;
+
+    // Same buildings, now with people in them.
+    world.economy.stocks.food = 9000;
+    world.populace.settle(30);
+    run(world, 120);
+    world.rebuildFabric();
+    const full = world.crowd.people.length;
+
+    note(`${emptyPop} people → ${empty} in the street; ${world.populace.report.population} people → ${full}`);
+    return empty === 0 && full > 0;
+  },
+);
+
+claim(
+  'A rebuilt street network does not stop everybody in their tracks',
+  'people.ts — the fabric rebuilds every few seconds in a living town',
+  (note) => {
+    const world = freshWorld();
+    world.ages.index = 0;
+    world.rivalActive = false;
+
+    const heart = siteNear(world, C, C, 'sawmill');
+    if (!heart || !world.place('sawmill', heart).ok) return note('no ground'), false;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 36, heart.y + Math.sin(a) * 36, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    const well = siteNear(world, heart.x + 24, heart.y - 18, 'well');
+    if (well) world.place('well', well);
+    run(world, 400);
+    world.rebuildFabric();
+
+    // Walk them for a while, rebuilding the fabric throughout — which is what a
+    // town that is still growing does. Under the bug this was written for, every
+    // rebuild re-seeded the crowd with a fresh random pause and no route, so
+    // nobody ever finished a journey and the streets stayed empty.
+    let moved = 0;
+    const before = world.crowd.people.map((p) => ({ ...p.pos }));
+    for (let i = 0; i < 600; i++) {
+      world.updatePeople(0.1);
+      if (i % 40 === 0) world.rebuildFabric();
+    }
+    const after = world.crowd.people;
+    for (let i = 0; i < after.length; i++) {
+      if (Math.hypot(after[i].pos.x - before[i].x, after[i].pos.y - before[i].y) > 8) moved++;
+    }
+
+    const walking = after.filter((p) => p.route.length >= 2).length;
+    note(
+      `${moved}/${after.length} got somewhere over a minute of walking with the ` +
+        `network rebuilt 15 times; ${walking} on a route right now`,
+    );
+    return after.length > 0 && moved > after.length * 0.7;
+  },
+);
+
+claim(
+  'A route across town goes round the buildings, not through them',
+  'fabric.routeOver — the errand walks the same ground the streets were laid on',
+  (note) => {
+    const world = freshWorld();
+    world.rivalActive = false;
+
+    const heart = siteNear(world, C, C, 'farm');
+    if (!heart) return note('no ground'), false;
+    world.place('farm', heart);
+    const far = siteNear(world, heart.x + 150, heart.y + 90, 'workshop');
+    if (!far || !world.place('workshop', far).ok) return note('no second site'), false;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const p = siteNear(world, heart.x + Math.cos(a) * 40, heart.y + Math.sin(a) * 40, 'cottage');
+      if (p) world.place('cottage', p);
+    }
+    world.rebuildFabric();
+
+    const route = sim.routeOver(world.fabric, heart, far);
+    if (!route) return note('no route found at all'), false;
+
+    // Nothing on the route may be inside a building's footprint, and it must be
+    // a genuine route rather than the straight line the fallback would give.
+    let inside = 0;
+    for (const p of route) {
+      if (world.buildingAt(p.x, p.y)) inside++;
+    }
+    const direct = Math.hypot(far.x - heart.x, far.y - heart.y);
+    let length = 0;
+    for (let i = 1; i < route.length; i++) {
+      length += Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
+    }
+
+    note(
+      `${route.length} points, ${length.toFixed(0)}m for a ${direct.toFixed(0)}m crossing, ` +
+        `${inside} of them inside a building`,
+    );
+    return inside === 0 && route.length > 3 && length >= direct;
+  },
+);
+
 console.log('');
 if (failures > 0) {
   console.log(`${failures} trial(s) did not hold.\n`);
